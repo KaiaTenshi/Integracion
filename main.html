@@ -1,855 +1,739 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Rival Más Débil — Evento Competitivo</title>
-<style>
-:root{--bg:#0b1220;--card:#0f1724;--accent:#7dd3fc;--accent2:#60a5fa;--muted:#94a3b8;color-scheme:dark}
-html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#031026 0%,#071022 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:20px}
-.container{width:100%;max-width:1100px;background:var(--card);border-radius:12px;padding:22px;box-shadow:0 8px 30px rgba(2,6,23,.6)}
-h1{margin:0 0 8px;font-size:22px;color:var(--accent)}
-p.lead{margin:0 0 18px;color:var(--muted)}
-.row{display:flex;gap:16px;flex-wrap:wrap}
-.card{background:rgba(255,255,255,0.03);padding:14px;border-radius:10px;flex:1;min-width:320px}
-button{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;padding:8px 12px;border-radius:8px;color:#042029;font-weight:700;cursor:pointer}
-button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--accent);font-weight:600}
-ul.participants{list-style:none;padding:0;margin:0}
-ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);display:flex;align-items:center;gap:12px}
-.badge{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.04);font-weight:700}
-.small{font-size:13px;color:var(--muted)}
-.notice{background:rgba(0,0,0,0.25);padding:10px;border-radius:8px;margin-bottom:12px;color:var(--muted)}
-.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:60}
-.modal{background:#071028;padding:18px;border-radius:12px;min-width:320px;max-width:92%}
-.progress-wrap{width:220px;background:rgba(255,255,255,0.03);border-radius:999px;padding:6px}
-.progress{height:10px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden}
-.progress > i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
-.part-left{flex:1;display:flex;flex-direction:column}
-.part-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%}
-.ctrls{display:flex;gap:6px}
-.level-num{min-width:34px;text-align:center}
-.mono{font-family:monospace}
-.hidden{display:none!important}
-.vote-buttons-container{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.vote-btn{font-size:12px;padding:6px 10px}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Rival Más Débil — Evento Competitivo</title>
+  <meta name="theme-color" content="#0f172a" />
+
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#141c2f;
+      --panel-2:#0f172a;
+      --ink:#e6edf3;
+      --muted:#9fb2c8;
+      --accent:#22c55e;
+      --danger:#ef4444;
+      --warn:#f59e0b;
+      --primary:#3b82f6;
+      --shadow:0 8px 24px rgba(0,0,0,.35);
+      --radius:14px;
+      --radius-sm:10px;
+      --maxw:1040px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color:var(--ink);
+      background: radial-gradient(1200px 600px at 80% -50%, #1f2a48, transparent 60%), var(--bg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    .app{
+      max-width:var(--maxw);
+      margin-inline:auto;
+      padding:clamp(12px,2.5vw,24px);
+      display:grid;
+      gap:clamp(12px,2vw,20px);
+    }
+
+    header{
+      display:grid;
+      gap:10px;
+      grid-template-columns: 1fr auto;
+      align-items:center;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 50%), var(--panel-2);
+      border:1px solid rgba(255,255,255,.08);
+      padding:16px;
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+
+    .title{
+      display:flex; gap:12px; align-items:center; min-width:0;
+    }
+    .title h1{
+      margin:0;
+      font-size:clamp(18px, 3.5vw, 24px);
+      line-height:1.15;
+      font-weight:700;
+      letter-spacing:.2px;
+    }
+    .status-chip{
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.15);
+      color:var(--muted);
+      background:rgba(255,255,255,.03);
+    }
+
+    .grid{
+      display:grid;
+      gap:clamp(12px,2vw,16px);
+    }
+    @media (min-width: 960px){
+      .grid{ grid-template-columns: 1.1fr .9fr; align-items:start; }
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 50%), var(--panel);
+      border:1px solid rgba(255,255,255,.09);
+      border-radius:var(--radius);
+      padding:clamp(14px,2.2vw,18px);
+      box-shadow:var(--shadow);
+    }
+
+    .section-title{
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+      margin-bottom:10px;
+    }
+    .section-title h2{
+      margin:0;
+      font-size:clamp(16px,3vw,20px);
+      letter-spacing:.2px;
+    }
+    .subtle{color:var(--muted); font-size:13px}
+
+    .controls{
+      display:flex; flex-wrap:wrap; gap:8px;
+    }
+    button, .btn{
+      appearance:none; border:0; cursor:pointer;
+      padding:12px 14px; border-radius:12px;
+      background:#1f2a48; color:var(--ink);
+      border:1px solid rgba(255,255,255,.1);
+      transition:.2s transform, .2s background, .2s border-color, .2s opacity;
+      font-weight:600; letter-spacing:.2px;
+      min-height:44px;
+      touch-action:manipulation;
+    }
+    button:disabled{opacity:.5; cursor:not-allowed}
+    button.primary{background:linear-gradient(180deg, rgba(255,255,255,.08), transparent 50%), var(--primary); color:white; border-color:rgba(0,0,0,.0)}
+    button.success{background:linear-gradient(180deg, rgba(255,255,255,.08), transparent 50%), var(--accent); color:#0a1a0a;}
+    button.warn{background:linear-gradient(180deg, rgba(0,0,0,.15), transparent 50%), #25324d; border-color:#3b4a6b; color:#cfe0ff}
+    button.danger{background:linear-gradient(180deg, rgba(255,255,255,.08), transparent 50%), var(--danger); color:white}
+
+    /* Entrada de nombre */
+    .join-row{display:flex; gap:8px; flex-wrap:wrap}
+    .join-row input{
+      flex:1 1 220px; min-width:160px;
+      background:#0c1326; color:var(--ink);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:12px; padding:12px 14px;
+      min-height:44px;
+      outline:none;
+    }
+    .tag{ font-size:12px; padding:6px 8px; border-radius:999px; background:#0c1326; border:1px solid rgba(255,255,255,.12); color:#a5b4fc }
+    .tag.mod{ color:#22d3ee; }
+    .tag.out{ color:#fca5a5; }
+    .me{
+      display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    }
+
+    /* Lista de participantes */
+    .list{
+      display:grid; gap:8px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    .player{
+      background: #0c1326; border:1px solid rgba(255,255,255,.08); border-radius:12px;
+      padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
+    .player .name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    .badges{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+
+    /* Progreso grupal */
+    .progress-wrap{ display:grid; gap:8px }
+    .progress-bar{
+      --v:0%;
+      height:16px; border-radius:999px; background:#0c1326; border:1px solid rgba(255,255,255,.12); overflow:hidden;
+      position:relative;
+    }
+    .progress-fill{
+      position:absolute; inset:0;
+      width:var(--v);
+      background: linear-gradient(90deg, #22c55e, #10b981);
+      box-shadow: inset 0 0 16px rgba(0,0,0,.25);
+      transition: width .25s ease;
+    }
+    .prog-ctrls{ display:flex; gap:8px; flex-wrap:wrap }
+
+    /* Modal de votación */
+    .modal{
+      position:fixed; inset:0; display:none; place-items:center; backdrop-filter:saturate(120%) blur(10px); z-index:50;
+      padding:20px;
+      background: color-mix(in srgb, #0b1020 85%, transparent);
+    }
+    .modal.show{ display:grid }
+    .modal .box{
+      width:min(680px, 100%); background:var(--panel); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:16px; box-shadow:var(--shadow);
+      display:grid; gap:12px;
+    }
+    .cand-list{ display:grid; gap:8px; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); }
+    .cand{
+      background:#0c1326; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px; display:grid; gap:6px;
+    }
+    .cand button{ width:100% }
+    .hl{ color:#c7d2fe; }
+
+    /* Toast */
+    .toast{
+      position: fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:60;
+      background:#101a33; color:#e5edff; border:1px solid rgba(255,255,255,.12);
+      padding:10px 14px; border-radius:10px; box-shadow:var(--shadow);
+      display:none;
+    }
+    .toast.show{ display:block }
+  </style>
 </head>
 <body>
-<div class="container">
-  <h1>Rival Más Débil</h1>
-  <p class="lead">Sube niveles respondiendo bien. El moderador lidera las preguntas y controla niveles. Torre = 10 niveles.</p>
-
-  <div id="status" class="notice">Conectando a Firebase...</div>
-
-  <div class="row">
-    <div class="card">
-      <h3>Lobby & Participantes</h3>
-      <p class="small">Máximo 1 moderador + 10 participantes. Moderador no participa en votación.</p>
-
-      <div style="margin-top:10px">
-        <button id="joinBtn" disabled>Unirme</button>
-        <button id="leaveBtn" class="ghost hidden">Salir</button>
+  <div class="app">
+    <header>
+      <div class="title">
+        <div style="width:12px;height:12px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.25);" id="conn-dot"></div>
+        <h1>Rival Más Débil</h1>
       </div>
-
-      <div id="moderatorControls" class="hidden" style="margin-top:12px;display:flex;gap:8px;">
-        <button id="startBtn">Iniciar juego</button>
-        <button id="startVoteBtn" class="ghost">Iniciar votación</button>
-        <button id="endVoteBtn" class="ghost">Finalizar Votación</button>
-        <button id="resetBtn" class="ghost">Reiniciar juego</button>
+      <div class="me">
+        <span class="status-chip" id="roleChip">Conectando a Firebase…</span>
+        <span class="status-chip" id="phaseChip">Fase: —</span>
       </div>
+    </header>
 
-      <div style="margin-top:14px">
-        <h4>Participantes</h4>
-        <ul id="participantsList" class="participants"></ul>
-      </div>
-    </div>
+    <div class="grid">
+      <!-- Lado izquierdo: Lobby y Participantes -->
+      <section class="card">
+        <div class="section-title">
+          <h2>Lobby & Participantes</h2>
+          <span class="subtle">Máx. 1 moderador + 10 participantes</span>
+        </div>
 
-    <div class="card">
-      <h3>Estado</h3>
-      <p id="gamePhase" class="small">-</p>
-
-      <div id="notifications" style="margin-top:12px"></div>
-
-      <div id="impostorNotice" class="hidden" style="margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
-        <strong id="youAre">¡Eres el rival más débil!</strong>
-        <p class="small">Si te asignó el moderador, tendrás ventaja de prueba — pero el objetivo es mejorar tu nivel.</p>
-      </div>
-
-      <div id="results" style="margin-top:12px"></div>
-
-      <!-- Barra de progreso grupal -->
-      <div id="groupProgressContainer" class="hidden" style="margin-top:16px">
-        <h4>Progreso Grupal</h4>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="progress-wrap" style="flex:1">
-            <div class="progress"><i id="groupProgressBar" style="width:0%"></i></div>
+        <div class="join-row" style="margin-bottom:10px">
+          <input id="displayName" type="text" placeholder="Tu nombre (requerido para unirte)" autocomplete="name" />
+          <div class="controls">
+            <button id="btnJoin" class="primary">Unirme</button>
+            <button id="btnLeave" class="warn">Salir</button>
           </div>
-          <div class="small mono" id="groupProgressText">0 / 10</div>
         </div>
-        <p class="small">Progreso conjunto del equipo. ¡Trabajen juntos para llegar al nivel 10!</p>
-        
-        <!-- Botones de votación -->
-        <div id="voteButtonsContainer" class="hidden" style="margin-top:16px">
-          <h4>Votación Activa</h4>
-          <p class="small">Elige al rival más débil:</p>
-          <div id="voteButtons" class="vote-buttons-container"></div>
-          <p class="small" style="margin-top:8px;color:var(--accent)">Tu voto es anónimo</p>
+
+        <div class="controls" style="margin-bottom:10px">
+          <button id="btnStartGame" class="success">Iniciar juego</button>
+          <button id="btnStartVote" class="primary">Iniciar votación</button>
+          <button id="btnEndVote" class="danger">Finalizar Votación</button>
+          <button id="btnRestart" class="warn">Reiniciar juego</button>
         </div>
+
+        <div class="list" id="participantsList" aria-live="polite"></div>
+      </section>
+
+      <!-- Lado derecho: Estado & Progreso grupal -->
+      <section class="card">
+        <div class="section-title">
+          <h2>Progreso Grupal</h2>
+          <span class="subtle">Progreso conjunto del equipo (0–30). Solo el Moderador puede ajustar.</span>
+        </div>
+
+        <div class="progress-wrap">
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div id="progressLabel" class="hl">0 / 30</div>
+            <div id="moderatorNotice" class="subtle"></div>
+          </div>
+          <div class="progress-bar" aria-label="Progreso grupal">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="prog-ctrls">
+            <button id="btnMinus" class="warn">−1</button>
+            <button id="btnPlus" class="success">+1</button>
+          </div>
+          <div class="subtle">Trabajen juntos para llegar a 30 puntos. El moderador decide cómo se ganan/perdían puntos.</div>
+        </div>
+
+        <hr style="opacity:.15;margin:16px 0" />
+
+        <div>
+          <div class="section-title">
+            <h2>Votación</h2>
+            <span class="subtle">La votación es anónima. El Moderador no vota ni puede ser votado.</span>
+          </div>
+          <div class="subtle">Cuando el moderador active la fase de votación, se abrirá una ventana para elegir al “rival más débil”.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Modal de votación -->
+  <div class="modal" id="voteModal" role="dialog" aria-modal="true" aria-labelledby="voteTitle">
+    <div class="box">
+      <div class="section-title">
+        <h2 id="voteTitle">Votación Activa</h2>
+        <span class="subtle">Tu voto es anónimo</span>
+      </div>
+      <div class="subtle">Elige al rival más débil:</div>
+      <div class="cand-list" id="candidates"></div>
+      <div class="subtle" id="voteHint"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="btnCloseVote" class="warn">Cerrar</button>
       </div>
     </div>
   </div>
 
-  <footer style="margin-top:14px" class="small">La primera persona en entrar será el <strong>Moderador</strong>. Torre: 10 niveles.</footer>
-</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<div id="modalRoot" class="hidden"></div>
+  <!-- Firebase (Compat) -->
+  <!-- Ajusta la versión si lo prefieres -->
+  <ttps://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js</script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-ript>
+  <ttps://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js</script>
 
-<script type="module">
-/* -------------- Firebase + Auth + Firestore -------------- */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import {
-  getFirestore, doc, setDoc, getDoc, onSnapshot, collection,
-  updateDoc, deleteDoc, serverTimestamp, getDocs, addDoc, query, orderBy
-} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+  <script>
+    // =========================
+    // 1) Configura tu Firebase
+    // =========================
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_DOMINIO.firebaseapp.com",
+      databaseURL: "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+      projectId: "TU_PROYECTO",
+      storageBucket: "TU_PROYECTO.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "1:1234567890:web:xxxxxxxxxxxxxxxx"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
 
-/* ------- CONFIG ------- */
-const firebaseConfig = {
-  apiKey: "AIzaSyAlxBHSufZtVZ-Sko7Db5TDOuwerEJ67Wg",
-  authDomain: "integracion-c3e71.firebaseapp.com",
-  databaseURL: "https://integracion-c3e71.firebaseio.com",
-  projectId: "integracion-c3e71",
-  storageBucket: "integracion-c3e71.firebasestorage.app",
-  messagingSenderId: "445727613761",
-  appId: "1:445727613761:web:48708f0368cba79444f7c0",
-  measurementId: "G-GSNV9BNP3W"
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+    // Una sola sala (puedes parametrizar si quieres múltiples)
+    const ROOM_ID = "sala-1";
+    const roomRef = db.ref(`rooms/${ROOM_ID}`);
+    const participantsRef = roomRef.child("participants");
+    const votesRef = roomRef.child("votes");
 
-/* ------- UI refs ------- */
-const statusEl = document.getElementById("status");
-const joinBtn = document.getElementById("joinBtn");
-const leaveBtn = document.getElementById("leaveBtn");
-const participantsList = document.getElementById("participantsList");
-const moderatorControls = document.getElementById("moderatorControls");
-const startBtn = document.getElementById("startBtn");
-const startVoteBtn = document.getElementById("startVoteBtn");
-const endVoteBtn = document.getElementById("endVoteBtn");
-const resetBtn = document.getElementById("resetBtn");
-const gamePhaseEl = document.getElementById("gamePhase");
-const notificationsEl = document.getElementById("notifications");
-const impostorNotice = document.getElementById("impostorNotice");
-const resultsEl = document.getElementById("results");
-const modalRoot = document.getElementById("modalRoot");
-const groupProgressContainer = document.getElementById("groupProgressContainer");
-const groupProgressBar = document.getElementById("groupProgressBar");
-const groupProgressText = document.getElementById("groupProgressText");
-const voteButtonsContainer = document.getElementById("voteButtonsContainer");
-const voteButtons = document.getElementById("voteButtons");
+    // Estado local
+    let me = { uid:null, name:"" };
+    let room = { phase:"lobby", progress:0, moderatorId:null };
+    let participants = {}; // uid -> {name, active, eliminated, joinedAt}
+    let myVote = null;
 
-let currentUser = null;
-let unsubParts = null, unsubRoom = null, unsubEvents = null, unsubVotes = null;
-let localState = { participants: [], room: null };
-const ROOM_ID = "room_main";
-const LETTERS = "ABCDEFGHIJ".split("");
-const MAX_LEVEL = 10;
-let processedEventIds = new Set();
-let voteCheckInterval = null;
+    // Utilidades UI
+    const $ = (s)=>document.querySelector(s);
+    const $$ = (s)=>document.querySelectorAll(s);
+    const els = {
+      connDot: $('#conn-dot'),
+      roleChip: $('#roleChip'),
+      phaseChip: $('#phaseChip'),
+      displayName: $('#displayName'),
+      btnJoin: $('#btnJoin'),
+      btnLeave: $('#btnLeave'),
+      btnStartGame: $('#btnStartGame'),
+      btnStartVote: $('#btnStartVote'),
+      btnEndVote: $('#btnEndVote'),
+      btnRestart: $('#btnRestart'),
+      participantsList: $('#participantsList'),
+      progressLabel: $('#progressLabel'),
+      progressFill: $('#progressFill'),
+      moderatorNotice: $('#moderatorNotice'),
+      btnPlus: $('#btnPlus'),
+      btnMinus: $('#btnMinus'),
+      voteModal: $('#voteModal'),
+      candidates: $('#candidates'),
+      voteHint: $('#voteHint'),
+      btnCloseVote: $('#btnCloseVote'),
+      toast: $('#toast')
+    };
 
-/* ------- UI helpers ------- */
-function setStatus(txt, isError=false){ statusEl.textContent = txt; statusEl.style.color = isError ? "#ff7b7b" : ""; }
-function showNotification(txt){ notificationsEl.innerHTML = `<div class="small">${txt}</div>`; }
-function showModal(html){ modalRoot.innerHTML = `<div class="modal-backdrop">${html}</div>`; modalRoot.classList.remove("hidden"); }
-function closeModal(){ modalRoot.innerHTML = ""; modalRoot.classList.add("hidden"); }
+    // Persistir nombre local
+    els.displayName.value = localStorage.getItem("rmd_name") || "";
 
-/* ------- Firestore helpers ------- */
-async function ensureRoomExists(){
-  const roomRef = doc(db,"rooms",ROOM_ID);
-  try{
-    const snap = await getDoc(roomRef);
-    if(!snap.exists()){
-      await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp(), levels: {} });
-      setStatus(`Sala "${ROOM_ID}" creada automáticamente.`);
-    }
-    return true;
-  }catch(e){
-    console.error("ensureRoomExists error", e);
-    setStatus("Error al asegurar sala: "+(e?.message||e), true);
-    return false;
-  }
-}
-
-/* ------- Render participantes ------- */
-function renderParticipants(list){
-  participantsList.innerHTML = "";
-  list.sort((a,b)=>{
-    if(a.isModerator && !b.isModerator) return -1;
-    if(!a.isModerator && b.isModerator) return 1;
-    return (a.letter||"").localeCompare(b.letter||"");
-  }).forEach(p=>{
-    const li = document.createElement("li");
-
-    const left = document.createElement("div");
-    left.className = "part-left";
-    
-    const displayName = p.customName || p.name || "Invitado";
-    
-    left.innerHTML = `
-      <div class="part-row">
-        <div style="display:flex;align-items:center;gap:8px">
-          <strong>${displayName}</strong>
-          <span class="small">(${p.isModerator ? "Moderador" : (p.letter || "?")})</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="level-num mono">${typeof p.level === 'number' ? p.level : 0}</div>
-        </div>
-      </div>
-    `;
-
-    if (!p.isModerator) {
-      const progressDiv = document.createElement("div");
-      progressDiv.style.marginTop = "8px";
-      progressDiv.style.display = "flex";
-      progressDiv.style.alignItems = "center";
-      progressDiv.style.gap = "10px";
-      progressDiv.innerHTML = `
-        <div class="progress-wrap">
-          <div class="progress"><i style="width:${Math.min(100, Math.round(((p.level||0)/MAX_LEVEL)*100))}%"></i></div>
-        </div>
-        <div class="small">/ ${MAX_LEVEL}</div>
-      `;
-      left.appendChild(progressDiv);
+    function showToast(msg){
+      els.toast.textContent = msg;
+      els.toast.classList.add('show');
+      setTimeout(()=>els.toast.classList.remove('show'), 2000);
     }
 
-    li.appendChild(left);
-
-    const right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.innerHTML = `<span class="badge">${p.alive===false ? 'fuera' : (p.isModerator ? 'moderador' : 'jugador')}</span>`;
-
-    if (!p.isModerator && p.uid === currentUser?.uid) {
-      const editBtn = document.createElement("button");
-      editBtn.textContent = "Editar";
-      editBtn.className = "ghost";
-      editBtn.style.fontSize = "12px";
-      editBtn.onclick = () => openNameEditor(p);
-      right.appendChild(editBtn);
+    function isModerator(){ return me.uid && room.moderatorId === me.uid; }
+    function iAmActive(){
+      const p = participants[me.uid];
+      return !!(p && p.active && !p.eliminated);
     }
 
-    const me = localState.participants.find(x=>x.uid === currentUser?.uid);
-    if(me && me.isModerator && !p.isModerator){
-      const ctrl = document.createElement("div");
-      ctrl.className = "ctrls";
-      const plus = document.createElement("button");
-      plus.textContent = "+";
-      plus.onclick = ()=> changePlayerLevel(p.uid, +1);
-      const minus = document.createElement("button");
-      minus.className = "ghost";
-      minus.textContent = "−";
-      minus.onclick = ()=> changePlayerLevel(p.uid, -1);
-      ctrl.appendChild(plus); ctrl.appendChild(minus);
-      right.appendChild(ctrl);
+    function updateChips(){
+      els.roleChip.textContent = isModerator() ? "Rol: Moderador" : (iAmActive() ? "Rol: Participante" : "No unido");
+      els.phaseChip.textContent = `Fase: ${room.phase}`;
+      els.moderatorNotice.textContent = isModerator() ? "Eres moderador: puedes ajustar el progreso." : "Solo el moderador puede ajustar puntos.";
     }
 
-    li.appendChild(right);
-    participantsList.appendChild(li);
-  });
-}
+    function renderParticipants(){
+      const list = els.participantsList;
+      list.innerHTML = "";
+      const entries = Object.entries(participants)
+        .sort((a,b)=>(a[1].joinedAt||0) - (b[1].joinedAt||0));
 
-/* ------- Editor de nombre ------- */
-function openNameEditor(player) {
-  const html = `<div class="modal">
-    <h4>Editar Nombre</h4>
-    <div class="small">Personaliza tu nombre para que aparezca en el juego</div>
-    <div style="margin-top:12px">
-      <input type="text" id="nameInput" value="${player.customName || player.name || ''}" style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:white" placeholder="Ingresa tu nombre">
-    </div>
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <button id="saveNameBtn">Guardar</button>
-      <button id="cancelNameBtn" class="ghost">Cancelar</button>
-    </div>
-  </div>`;
-  showModal(html);
+      for(const [uid, p] of entries){
+        const div = document.createElement('div');
+        div.className = 'player';
+        const left = document.createElement('div');
+        const right = document.createElement('div');
+        right.className = 'badges';
 
-  const saveBtn = modalRoot.querySelector("#saveNameBtn");
-  const cancelBtn = modalRoot.querySelector("#cancelNameBtn");
-  const nameInput = modalRoot.querySelector("#nameInput");
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = p.name || `Jugador (${uid.slice(0,5)}…)`;
+        left.appendChild(name);
 
-  saveBtn.onclick = async () => {
-    const newName = nameInput.value.trim();
-    if (newName) {
-      try {
-        await updateDoc(doc(db, "rooms", ROOM_ID, "participants", player.uid), {
-          customName: newName
-        });
-        closeModal();
-        setStatus("Nombre actualizado correctamente.");
-      } catch (e) {
-        console.error(e);
-        setStatus("Error al actualizar nombre: " + (e?.message || e), true);
-      }
-    }
-  };
-
-  cancelBtn.onclick = () => closeModal();
-}
-
-/* ------- Actualizar barra de progreso grupal ------- */
-function updateGroupProgress() {
-  const alivePlayers = localState.participants.filter(p => !p.isModerator && p.alive !== false);
-  if (alivePlayers.length === 0) {
-    groupProgressContainer.classList.add("hidden");
-    return;
-  }
-
-  const totalLevel = alivePlayers.reduce((sum, player) => sum + (player.level || 0), 0);
-  const maxPossibleLevel = alivePlayers.length * MAX_LEVEL;
-  const progressPercent = Math.min(100, Math.round((totalLevel / maxPossibleLevel) * 100));
-  
-  groupProgressBar.style.width = `${progressPercent}%`;
-  groupProgressText.textContent = `${totalLevel} / ${maxPossibleLevel}`;
-  groupProgressContainer.classList.remove("hidden");
-}
-
-/* ------- Mostrar botones de votación ------- */
-function renderVoteButtons() {
-  const me = localState.participants.find(p => p.uid === currentUser?.uid);
-  
-  // Solo mostrar botones si el usuario es jugador, está vivo y no ha votado aún
-  if (!me || me.isModerator || me.alive === false) {
-    voteButtonsContainer.classList.add("hidden");
-    return;
-  }
-
-  // Verificar si ya votó
-  getDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid)).then(snap => {
-    const data = snap.exists() ? snap.data() : {};
-    if (data?.lastVoteAt) {
-      // Ya votó, ocultar botones
-      voteButtonsContainer.classList.add("hidden");
-      return;
-    }
-
-    // Mostrar botones de votación
-    const alivePlayers = localState.participants.filter(p => 
-      p.alive !== false && p.uid !== currentUser.uid && !p.isModerator
-    );
-
-    if (alivePlayers.length === 0) {
-      voteButtonsContainer.classList.add("hidden");
-      return;
-    }
-
-    voteButtons.innerHTML = '';
-    alivePlayers.forEach(player => {
-      const button = document.createElement("button");
-      button.className = "vote-btn ghost";
-      button.textContent = player.customName || player.name;
-      button.onclick = async () => {
-        try {
-          // Registrar voto
-          await addDoc(collection(db, "rooms", ROOM_ID, "votes"), { 
-            targetUid: player.uid, 
-            createdAt: serverTimestamp() 
-          });
-          
-          // Marcar como votado en documento privado
-          await updateDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid), { 
-            lastVoteFor: player.uid, 
-            lastVoteAt: serverTimestamp() 
-          });
-          
-          setStatus(`Has votado por ${player.customName || player.name}`);
-          voteButtonsContainer.classList.add("hidden");
-          
-          // Verificar si todos han votado
-          setTimeout(checkAllVoted, 1000);
-        } catch (e) {
-          console.error(e);
-          setStatus("Error al votar: " + (e?.message || e), true);
+        if (room.moderatorId === uid){
+          const b = document.createElement('span'); b.className = 'tag mod'; b.textContent = 'MOD';
+          right.appendChild(b);
         }
-      };
-      voteButtons.appendChild(button);
-    });
-
-    voteButtonsContainer.classList.remove("hidden");
-  }).catch(e => {
-    console.debug("Error checking vote status:", e);
-  });
-}
-
-/* ------- Subscriptions ------- */
-function subscribeParticipants(){
-  const partsCol = collection(db,"rooms",ROOM_ID,"participants");
-  if(unsubParts) unsubParts();
-  unsubParts = onSnapshot(partsCol, snap=>{
-    const parts = [];
-    snap.forEach(d=>parts.push({ id:d.id, ...d.data() }));
-    const levelMap = localState.room?.levels || {};
-    for(const p of parts){
-      if(levelMap && levelMap[p.uid] !== undefined) p.level = levelMap[p.uid];
-      else p.level = p.level || 0;
-    }
-    localState.participants = parts;
-    renderParticipants(parts);
-    updateGroupProgress();
-    updateLocalUI();
-    
-    // Actualizar botones de votación si estamos en fase de votación
-    if (localState.room?.phase === 'voting') {
-      renderVoteButtons();
-    }
-  }, err=>{
-    console.error("participants listen", err);
-    setStatus("Error al escuchar participantes: "+err.message, true);
-  });
-}
-
-function subscribeRoom(){
-  const roomRef = doc(db,"rooms",ROOM_ID);
-  if(unsubRoom) unsubRoom();
-  unsubRoom = onSnapshot(roomRef, snap=>{
-    localState.room = snap.exists() ? snap.data() : null;
-    gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
-    
-    if(localState.participants.length > 0 && localState.room?.levels){
-      const levelMap = localState.room.levels;
-      localState.participants.forEach(p=>{
-        p.level = levelMap?.[p.uid] ?? p.level ?? 0;
-      });
-      renderParticipants(localState.participants);
-      updateGroupProgress();
-    }
-    
-    updateLocalUI();
-
-    // Manejar cambios de fase
-    if (localState.room?.phase === 'voting') {
-      // Iniciar verificación periódica de votos
-      if (voteCheckInterval) clearInterval(voteCheckInterval);
-      voteCheckInterval = setInterval(checkAllVoted, 3000);
-      
-      // Mostrar botones de votación
-      renderVoteButtons();
-    } else {
-      // Ocultar botones de votación si no estamos en fase de votación
-      voteButtonsContainer.classList.add("hidden");
-      
-      // Limpiar intervalo si existe
-      if (voteCheckInterval) {
-        clearInterval(voteCheckInterval);
-        voteCheckInterval = null;
-      }
-    }
-  }, err=>{
-    console.error("room listen", err);
-    setStatus("Error al escuchar sala: "+err.message, true);
-  });
-}
-
-/* ------- Events subscription ------- */
-function subscribeEvents(){
-  const eventsCol = collection(db,"rooms",ROOM_ID,"events");
-  const q = query(eventsCol, orderBy("createdAt","asc"));
-  if(unsubEvents) unsubEvents();
-  unsubEvents = onSnapshot(q, snap=>{
-    snap.docChanges().forEach(change=>{
-      if(change.type === "added"){
-        const id = change.doc.id;
-        if(processedEventIds.has(id)) return;
-        processedEventIds.add(id);
-        const ev = change.doc.data();
-        handleEvent(ev, id);
-      }
-    });
-  }, err=>{
-    console.error("events listen", err);
-  });
-}
-
-/* ------- Votes subscription ------- */
-function subscribeVotes() {
-  const votesCol = collection(db, "rooms", ROOM_ID, "votes");
-  if (unsubVotes) unsubVotes();
-  unsubVotes = onSnapshot(votesCol, async (snap) => {
-    if (localState.room?.phase === 'voting') {
-      await checkAllVoted();
-    }
-  }, err => {
-    console.error("votes listen", err);
-  });
-}
-
-/* ------- Verificar si todos han votado ------- */
-async function checkAllVoted() {
-  try {
-    const alivePlayers = localState.participants.filter(p => 
-      p.alive !== false && !p.isModerator
-    );
-    
-    const votesSnap = await getDocs(collection(db, "rooms", ROOM_ID, "votes"));
-    const votes = [];
-    votesSnap.forEach(doc => votes.push(doc.data()));
-    
-    // Contar votantes únicos consultando documentos privados
-    const voters = new Set();
-    const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
-    privateDocs.forEach(docSnap => {
-      const data = docSnap.data();
-      if (data.lastVoteAt && data.role === 'player') {
-        voters.add(docSnap.id);
-      }
-    });
-    
-    // Si todos los jugadores vivos han votado, procesar automáticamente
-    if (voters.size >= alivePlayers.length) {
-      setStatus("Todos han votado. Procesando resultados automáticamente...");
-      await endVotingAndEliminateWeakest();
-    }
-  } catch (e) {
-    console.error("Error checking votes:", e);
-  }
-}
-
-/* ------- Manejar eventos ------- */
-function handleEvent(ev, id){
-  if(!ev || !ev.type) return;
-  if(ev.type === "startGame"){
-    setStatus("Evento: Juego iniciado.");
-    if(currentUser && ev.rivalUid === currentUser.uid){
-      impostorNotice.classList.remove("hidden");
-      document.getElementById("youAre").textContent = "¡Eres el rival más débil!";
-    } else {
-      impostorNotice.classList.add("hidden");
-    }
-    if(ev.levels){
-      localState.room = localState.room || {};
-      localState.room.levels = { ...(localState.room.levels || {}), ...ev.levels };
-    }
-    updateGroupProgress();
-  } else if(ev.type === "startVote"){
-    setStatus("Evento: Votación iniciada.");
-    if (voteCheckInterval) clearInterval(voteCheckInterval);
-    voteCheckInterval = setInterval(checkAllVoted, 3000);
-  } else if(ev.type === "setLevel"){
-    localState.room = localState.room || {};
-    localState.room.levels = localState.room.levels || {};
-    localState.room.levels[ev.targetUid] = ev.level;
-    localState.participants.forEach(p=>{ if(p.uid === ev.targetUid) p.level = ev.level; });
-    renderParticipants(localState.participants);
-    updateGroupProgress();
-  } else if(ev.type === "resetGame"){
-    setStatus("Evento: Juego reiniciado por moderador.");
-    impostorNotice.classList.add("hidden");
-    localState.room = localState.room || {};
-    localState.room.phase = "lobby";
-    localState.room.round = 0;
-    localState.room.levels = {};
-    localState.participants.forEach(p=> p.level = 0);
-    renderParticipants(localState.participants);
-    updateGroupProgress();
-    
-    if (voteCheckInterval) {
-      clearInterval(voteCheckInterval);
-      voteCheckInterval = null;
-    }
-  } else if(ev.type === "votingEnded") {
-    setStatus("Votación terminada. Resultados:");
-    showNotification(`El rival más débil es: ${ev.weakestPlayerName}. Ha sido eliminado del juego.`);
-    
-    const weakestPlayer = localState.participants.find(p => p.uid === ev.weakestPlayerUid);
-    if (weakestPlayer) {
-      weakestPlayer.alive = false;
-      renderParticipants(localState.participants);
-      updateGroupProgress();
-    }
-    
-    if (voteCheckInterval) {
-      clearInterval(voteCheckInterval);
-      voteCheckInterval = null;
-    }
-  }
-}
-
-/* ------- UI state updates ------- */
-function updateLocalUI(){
-  const alive = localState.participants.filter(p=>p.alive !== false);
-  const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-  if(me){ joinBtn.classList.add("hidden"); leaveBtn.classList.remove("hidden"); joinBtn.disabled = false; }
-  else { joinBtn.classList.remove("hidden"); leaveBtn.classList.add("hidden"); joinBtn.disabled = false; }
-  
-  if(me && me.isModerator) {
-    moderatorControls.classList.remove("hidden");
-  } else {
-    moderatorControls.classList.add("hidden");
-  }
-  
-  if(!me) impostorNotice.classList.add("hidden");
-  if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
-  showNotification(`Conectados: ${alive.length} jugadores vivos. Total: ${localState.participants.length} / 11.`);
-}
-
-/* ------- Helpers de lobby ------- */
-function nextAvailableLetter(){
-  const used = localState.participants.map(p=>p.letter).filter(Boolean);
-  for(const l of LETTERS) if(!used.includes(l)) return l;
-  return null;
-}
-function isLobbyFull(){ return localState.participants.length >= 11; }
-
-/* ------- Join ------- */
-joinBtn.addEventListener("click", async ()=>{
-  setStatus("Solicitando ingreso...");
-  try{
-    const ok = await ensureRoomExists();
-    if(!ok) return;
-    if(isLobbyFull()){ setStatus("Lobby lleno (1 moderador + 10 jugadores).", true); return; }
-
-    const partsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"participants"));
-    const parts = []; partsSnap.forEach(d=>parts.push({ id:d.id, ...d.data() }));
-    const hasModerator = parts.some(p=>p.isModerator);
-    const usedLetters = parts.map(p=>p.letter).filter(Boolean);
-    const partRef = doc(db,"rooms",ROOM_ID,"participants",currentUser.uid);
-
-    if(!hasModerator){
-      await setDoc(partRef, { uid: currentUser.uid, name: `Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp(), level: 0 });
-      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "moderator" });
-      setStatus("Ingresado como Moderador.");
-    } else {
-      let letter = null;
-      for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
-      if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
-      await setDoc(partRef, { uid: currentUser.uid, name: `Jugador ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp(), level: 0 });
-      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null });
-      setStatus(`Ingresado como Jugador ${letter}.`);
-    }
-  }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
-});
-
-/* ------- Leave ------- */
-leaveBtn.addEventListener("click", async ()=>{
-  if(!confirm("¿Seguro que quieres salir?")) return;
-  try{
-    await deleteDoc(doc(db,"rooms",ROOM_ID,"participants",currentUser.uid));
-    await deleteDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid));
-    setStatus("Has salido.");
-  }catch(e){ console.error(e); setStatus("Error al salir: "+(e?.message || e), true); }
-});
-
-/* ------- Cambiar nivel de jugador ------- */
-async function changePlayerLevel(targetUid, delta){
-  try{
-    const curLevel = (localState.room?.levels?.[targetUid] ?? localState.participants.find(p=>p.uid===targetUid)?.level ?? 0);
-    let newLevel = Math.max(0, Math.min(MAX_LEVEL, curLevel + delta));
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    try{
-      await updateDoc(roomRef, { [`levels.${targetUid}`]: newLevel });
-      setStatus(`Nivel de jugador actualizado a ${newLevel}.`);
-    }catch(upErr){
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "setLevel", targetUid, level: newLevel, createdBy: currentUser.uid, createdAt: serverTimestamp()
-      });
-      setStatus(`Nivel de jugador actualizado a ${newLevel} (evento creado).`);
-    }
-    updateGroupProgress();
-  }catch(e){ console.error(e); setStatus("Error al cambiar nivel: "+(e?.message||e), true); }
-}
-
-/* ------- Iniciar juego ------- */
-startBtn.addEventListener("click", async ()=>{
-  try{
-    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar el juego."); return; }
-    const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
-    if(players.length < 1){ alert("Necesitas al menos 1 jugador para comenzar."); return; }
-
-    const chosen = players[Math.floor(Math.random() * players.length)];
-    const rivalUid = chosen.uid;
-    const round = (localState.room?.round || 0) + 1;
-
-    const newLevels = { ...(localState.room?.levels || {}) };
-    localState.participants.forEach(p => {
-      if(!p.isModerator) newLevels[p.uid] = newLevels[p.uid] ?? (p.level ?? 0);
-    });
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    try{
-      await updateDoc(roomRef, { phase: "playing", round, rivalUid, levels: newLevels });
-      setStatus("Juego iniciado.");
-    }catch(upErr){
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "startGame", rivalUid, round, levels: newLevels, createdBy: currentUser.uid, createdAt: serverTimestamp()
-      });
-      setStatus("Juego iniciado (evento creado).");
-    }
-    updateGroupProgress();
-  }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
-});
-
-/* ------- Iniciar votación ------- */
-startVoteBtn.addEventListener("click", async ()=>{
-  try{
-    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar la votación."); return; }
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    try{
-      await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp() });
-      setStatus("Votación iniciada.");
-    }catch(upErr){
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "startVote", createdBy: currentUser.uid, createdAt: serverTimestamp()
-      });
-      setStatus("Votación iniciada (evento creado).");
-    }
-
-    if (voteCheckInterval) clearInterval(voteCheckInterval);
-    voteCheckInterval = setInterval(checkAllVoted, 3000);
-    
-  }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
-});
-
-/* ------- Finalizar votación ------- */
-async function endVotingAndEliminateWeakest() {
-  try {
-    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede finalizar la votación."); return; }
-
-    const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
-    const votes = [];
-    votesSnap.forEach(doc => votes.push(doc.data()));
-    
-    const voteCount = {};
-    votes.forEach(vote => {
-      voteCount[vote.targetUid] = (voteCount[vote.targetUid] || 0) + 1;
-    });
-    
-    let maxVotes = 0;
-    let weakestPlayerUid = null;
-    let weakestPlayerName = null;
-    
-    for (const [uid, count] of Object.entries(voteCount)) {
-      if (count > maxVotes) {
-        maxVotes = count;
-        weakestPlayerUid = uid;
-        const player = localState.participants.find(p => p.uid === uid);
-        weakestPlayerName = player ? (player.customName || player.name) : "Desconocido";
-      }
-    }
-    
-    if (weakestPlayerUid) {
-      await updateDoc(doc(db,"rooms",ROOM_ID,"participants",weakestPlayerUid), { alive: false });
-      
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "votingEnded", 
-        weakestPlayerUid, 
-        weakestPlayerName,
-        voteCount: maxVotes,
-        createdBy: currentUser.uid, 
-        createdAt: serverTimestamp()
-      });
-      
-      const roomRef = doc(db,"rooms",ROOM_ID);
-      await updateDoc(roomRef, { phase: "playing" });
-      
-      setStatus(`Votación finalizada. ${weakestPlayerName} ha sido eliminado.`);
-    } else {
-      setStatus("No se pudo determinar el rival más débil.");
-    }
-    
-    try {
-      for(const v of votesSnap.docs) await deleteDoc(v.ref);
-    } catch(e){ console.debug("no se pudieron borrar votes", e); }
-    
-    if (voteCheckInterval) {
-      clearInterval(voteCheckInterval);
-      voteCheckInterval = null;
-    }
-    
-  } catch(e) {
-    console.error(e);
-    setStatus("Error al finalizar votación: "+(e?.message || e), true);
-  }
-}
-
-/* ------- Reiniciar juego ------- */
-resetBtn.addEventListener("click", async ()=>{
-  if(!confirm("¿Seguro que quieres reiniciar el juego? Esto reseteará niveles y fase a 'lobby'.")) return;
-  try{
-    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede reiniciar."); return; }
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    const resetPayload = { phase: "lobby", round: 0, rivalUid: null, votingStartedAt: null, levels: {} };
-    try{
-      await updateDoc(roomRef, resetPayload);
-      setStatus("Juego reiniciado.");
-    }catch(upErr){
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "resetGame", createdBy: currentUser.uid, createdAt: serverTimestamp()
-      });
-      setStatus("Juego reiniciado (evento creado).");
-    }
-
-    const players = localState.participants.filter(p => !p.isModerator);
-    for (const player of players) {
-      await updateDoc(doc(db,"rooms",ROOM_ID,"participants",player.uid), { alive: true });
-    }
-
-    try{
-      const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
-      for(const v of votesSnap.docs) await deleteDoc(v.ref);
-    }catch(e){ console.debug("no se pudieron borrar votes", e); }
-
-    if (voteCheckInterval) {
-      clearInterval(voteCheckInterval);
-      voteCheckInterval = null;
-    }
-
-  }catch(e){ console.error(e); setStatus("Error al reiniciar: "+(e?.message || e), true); }
-});
-
-/* ------- Auth flows y listeners ------- */
-async function tryAnonSignIn(){
-  setStatus("Intentando autenticación anónima...");
-  try{ await signInAnonymously(auth); }
-  catch(err){ console.error("anon sign-in err", err); setStatus("Error de autenticación anónima: " + (err.message || err.code), true); }
-}
-
-onAuthStateChanged(auth, async (user)=>{
-  if(user){
-    currentUser = user;
-    setStatus("Conectado (anónimo). UID: " + user.uid);
-    joinBtn.disabled = false;
-    try{
-      await ensureRoomExists();
-      subscribeParticipants();
-      subscribeRoom();
-      subscribeEvents();
-      subscribeVotes();
-
-      const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
-      onSnapshot(privateRef, snap=>{
-        // Actualizar botones de votación si cambia el estado de voto
-        if (localState.room?.phase === 'voting') {
-          renderVoteButtons();
+        if (p.eliminated){
+          const b = document.createElement('span'); b.className = 'tag out'; b.textContent = 'Fuera';
+          right.appendChild(b);
+        }else if (p.active){
+          const b = document.createElement('span'); b.className = 'tag'; b.textContent = 'Activo';
+          right.appendChild(b);
+        }else{
+          const b = document.createElement('span'); b.className = 'tag'; b.textContent = 'Inactivo';
+          right.appendChild(b);
         }
-      }, err=>{ console.debug("private listen:", err?.code || err); });
 
-    }catch(e){ console.error(e); setStatus("Error suscribiendo: "+(e.message||e), true); }
-  } else {
-    setStatus("No autenticado (intento de anónimo automático).", true);
-  }
-});
+        if (uid === me.uid){
+          const b = document.createElement('span'); b.className = 'tag'; b.textContent = 'Tú';
+          right.appendChild(b);
+        }
 
-/* ------- start auth ------- */
-tryAnonSignIn();
+        div.appendChild(left);
+        div.appendChild(right);
+        list.appendChild(div);
+      }
+    }
 
-</script>
+    function setProgressUI(value){
+      const v = Math.max(0, Math.min(30, Number(value)||0));
+      els.progressLabel.textContent = `${v} / 30`;
+      const pct = `${(v/30)*100}%`;
+      els.progressFill.style.setProperty('--v', pct);
+    }
+
+    function setPhase(newPhase){
+      room.phase = newPhase;
+      updateChips();
+      // Mostrar modal de votación si aplica
+      const canVote = me.uid && !isModerator() && iAmActive();
+      if (newPhase === 'voting' && canVote){
+        openVoteModal();
+      }else{
+        closeVoteModal();
+      }
+      // Botones habilitados/visibles según rol/fase
+      const m = isModerator();
+      els.btnStartGame.disabled = !m || room.phase!=='lobby';
+      els.btnStartVote.disabled = !m || room.phase!=='playing';
+      els.btnEndVote.disabled = !m || room.phase!=='voting';
+      els.btnRestart.disabled = !m;
+    }
+
+    function openVoteModal(){
+      buildCandidates();
+      els.voteModal.classList.add('show');
+    }
+    function closeVoteModal(){
+      els.voteModal.classList.remove('show');
+    }
+
+    function buildCandidates(){
+      els.candidates.innerHTML = "";
+      // Elegibles: activos, no eliminados, no moderador, no tú
+      const eligibles = Object.entries(participants)
+        .filter(([uid,p]) => p.active && !p.eliminated && uid !== me.uid && uid !== room.moderatorId);
+
+      if (eligibles.length === 0){
+        els.voteHint.textContent = "No hay candidatos elegibles en este momento.";
+        return;
+      }
+
+      for(const [uid, p] of eligibles){
+        const card = document.createElement('div');
+        card.className = 'cand';
+        const strong = document.createElement('div');
+        strong.style.fontWeight = '700';
+        strong.textContent = p.name || `Jugador (${uid.slice(0,5)}…)`;
+        const small = document.createElement('div');
+        small.className = 'subtle';
+        small.textContent = 'Votar a esta persona';
+
+        const btn = document.createElement('button');
+        btn.className = 'primary';
+        btn.textContent = myVote === uid ? 'Cambiar mi voto a esta persona' : 'Votar';
+        btn.addEventListener('click', ()=>castVote(uid));
+
+        card.appendChild(strong);
+        card.appendChild(small);
+        card.appendChild(btn);
+        els.candidates.appendChild(card);
+      }
+
+      els.voteHint.textContent = myVote ? `Tu voto actual: ${(participants[myVote]?.name)||'—'}` : 'Aún no has votado.';
+    }
+
+    function castVote(targetUid){
+      if (!me.uid || isModerator() || !iAmActive() || room.phase!=='voting') return;
+      votesRef.child(me.uid).set(targetUid).then(()=>{
+        myVote = targetUid;
+        buildCandidates();
+        showToast('Voto registrado');
+      }).catch(()=>{
+        showToast('No se pudo registrar el voto');
+      });
+    }
+
+    // =========================
+    // 2) Lógica Realtime
+    // =========================
+    // Conexión
+    db.ref('.info/connected').on('value', snap=>{
+      const ok = !!snap.val();
+      els.connDot.style.background = ok ? '#22c55e' : '#ef4444';
+    });
+
+    // Estado de sala
+    roomRef.child('progress').on('value', s=>{
+      const v = Number(s.val()||0);
+      room.progress = v;
+      setProgressUI(v);
+    });
+    roomRef.child('phase').on('value', s=>{
+      const v = s.val() || 'lobby';
+      setPhase(v);
+    });
+    roomRef.child('moderatorId').on('value', s=>{
+      room.moderatorId = s.val() || null;
+      updateChips();
+      // Ajustar controles de progreso
+      const m = isModerator();
+      els.btnPlus.disabled = !m;
+      els.btnMinus.disabled = !m;
+      // Botones de flujo
+      els.btnStartGame.disabled = !m || room.phase!=='lobby';
+      els.btnStartVote.disabled = !m || room.phase!=='playing';
+      els.btnEndVote.disabled = !m || room.phase!=='voting';
+      els.btnRestart.disabled = !m;
+      renderParticipants();
+    });
+
+    // Participantes
+    participantsRef.on('value', s=>{
+      participants = s.val()||{};
+      renderParticipants();
+      // Si el moderador actual no es válido, reasignar a otro activo
+      ensureModeratorExists();
+    });
+
+    // Mis votos
+    votesRef.child('.info').off(); // nada
+    // Escuchar mi voto para pintar estado
+    function watchMyVote(){
+      if (!me.uid) return;
+      votesRef.child(me.uid).on('value', s=>{
+        myVote = s.val() || null;
+        if (room.phase === 'voting' && !isModerator()){
+          buildCandidates();
+        }
+      });
+    }
+
+    // =========================
+    // 3) Auth Anónima
+    // =========================
+    auth.onAuthStateChanged(async user=>{
+      if (!user){
+        await auth.signInAnonymously();
+        return;
+      }
+      me.uid = user.uid;
+      updateChips();
+      watchMyVote();
+    });
+
+    // =========================
+    // 4) Acciones
+    // =========================
+    function cleanName(v){
+      return (v||'').toString().trim().slice(0,40);
+    }
+
+    async function join(){
+      const name = cleanName(els.displayName.value);
+      if (!name){ showToast('Escribe tu nombre para unirte'); return; }
+      if (!me.uid){ showToast('Conectando… intenta de nuevo'); return; }
+
+      localStorage.setItem("rmd_name", name);
+      const pRef = participantsRef.child(me.uid);
+      await pRef.update({
+        name, active:true, eliminated:false, joinedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+      // Primer moderador: si no hay, me lo asigno
+      await roomRef.child('moderatorId').transaction(curr => curr || me.uid);
+      // Si la fase estaba "ended", lo regresamos a lobby si no hay juego corriendo
+      updateChips();
+      showToast('¡Te uniste!');
+    }
+
+    async function leave(){
+      if (!me.uid) return;
+      await participantsRef.child(me.uid).update({ active:false });
+      if (room.moderatorId === me.uid){
+        await reassignModerator();
+      }
+      updateChips();
+      showToast('Saliste del juego');
+    }
+
+    async function startGame(){
+      if (!isModerator()) return showToast('Solo el moderador puede iniciar');
+      await roomRef.update({ phase:'playing', progress:0 });
+      await votesRef.set(null);
+      showToast('Juego iniciado');
+    }
+
+    async function startVoting(){
+      if (!isModerator()) return showToast('Solo el moderador puede iniciar votación');
+      await votesRef.set(null);
+      await roomRef.update({ phase:'voting' });
+      showToast('Votación iniciada');
+    }
+
+    async function endVoting(){
+      if (!isModerator()) return showToast('Solo el moderador puede finalizar votación');
+      const [votesSnap, partsSnap] = await Promise.all([votesRef.get(), participantsRef.get()]);
+      const vs = votesSnap.val()||{};
+      const ps = partsSnap.val()||{};
+      const mod = room.moderatorId;
+
+      // Contar votos solo a elegibles
+      const counts = {};
+      for(const [voter, target] of Object.entries(vs)){
+        const tp = ps[target];
+        if (!tp) continue;
+        const eligible = tp.active && !tp.eliminated && target !== mod;
+        if (!eligible) continue;
+        counts[target] = (counts[target]||0) + 1;
+      }
+
+      let eliminatedUid = null;
+      let maxVotes = -1;
+      for(const [uid,count] of Object.entries(counts)){
+        if (count > maxVotes){ maxVotes = count; eliminatedUid = uid; }
+        else if (count === maxVotes && Math.random() < 0.5){ // desempate aleatorio simple
+          eliminatedUid = uid;
+        }
+      }
+
+      const updates = { phase:'playing' };
+      if (eliminatedUid){
+        updates[`participants/${eliminatedUid}/eliminated`] = true;
+        updates[`participants/${eliminatedUid}/active`] = false;
+      }
+      updates['votes'] = null;
+
+      await roomRef.update(updates);
+      showToast(eliminatedUid ? `Eliminado: ${ps[eliminatedUid]?.name || eliminatedUid}` : 'Sin eliminados');
+    }
+
+    async function restartGame(){
+      if (!isModerator()) return showToast('Solo el moderador puede reiniciar');
+      const snap = await participantsRef.get();
+      const ps = snap.val()||{};
+      const updates = {};
+      for(const [uid, p] of Object.entries(ps)){
+        updates[`participants/${uid}/eliminated`] = false;
+        // Requediste: re-activar a quienes estaban fuera
+        updates[`participants/${uid}/active`] = true;
+      }
+      updates['progress'] = 0;
+      updates['phase'] = 'lobby';
+      updates['votes'] = null;
+      await roomRef.update(updates);
+      showToast('Juego reiniciado: todos reactivados');
+    }
+
+    async function incProgress(delta){
+      if (!isModerator()) return showToast('Solo el moderador puede ajustar');
+      await roomRef.child('progress').transaction(curr=>{
+        const v = Math.max(0, Math.min(30, Number(curr||0) + delta));
+        return v;
+      });
+    }
+
+    // Moderación: garantizar que siempre exista moderador cuando hay participantes activos
+    async function ensureModeratorExists(){
+      const mod = room.moderatorId;
+      if (mod && participants[mod] && participants[mod].active) return;
+      await reassignModerator();
+    }
+
+    async function reassignModerator(){
+      const candidates = Object.entries(participants)
+        .filter(([uid,p])=>p.active && !p.eliminated)
+        .sort((a,b)=>(a[1].joinedAt||0) - (b[1].joinedAt||0));
+      const next = candidates[0]?.[0] || null;
+      await roomRef.child('moderatorId').set(next);
+      if (next){
+        showToast(`Nuevo moderador: ${participants[next]?.name || next}`);
+      }else{
+        showToast('Sin moderador (no hay participantes activos)');
+      }
+    }
+
+    // =========================
+    // 5) Eventos UI
+    // =========================
+    els.btnJoin.addEventListener('click', join);
+    els.btnLeave.addEventListener('click', leave);
+    els.btnStartGame.addEventListener('click', startGame);
+    els.btnStartVote.addEventListener('click', startVoting);
+    els.btnEndVote.addEventListener('click', endVoting);
+    els.btnRestart.addEventListener('click', restartGame);
+    els.btnPlus.addEventListener('click', ()=>incProgress(+1));
+    els.btnMinus.addEventListener('click', ()=>incProgress(-1));
+    els.btnCloseVote.addEventListener('click', closeVoteModal);
+
+    // Estado inicial de botones
+    function refreshButtons(){
+      const joined = iAmActive();
+      els.btnJoin.disabled = joined;
+      els.btnLeave.disabled = !joined && !isModerator() && !participants[me.uid];
+
+      const m = isModerator();
+      els.btnPlus.disabled = !m;
+      els.btnMinus.disabled = !m;
+      els.btnStartGame.disabled = !m || room.phase!=='lobby';
+      els.btnStartVote.disabled = !m || room.phase!=='playing';
+      els.btnEndVote.disabled = !m || room.phase!=='voting';
+      els.btnRestart.disabled = !m;
+    }
+    setInterval(refreshButtons, 500); // simple polling para mantener coherencia visual
+  </script>
+
+  <!--
+    Reglas sugeridas de seguridad (Realtime Database):
+    Ajusta según tus necesidades (NO se aplican automáticamente desde aquí).
+    {
+      "rules": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "rooms": {
+          "$room": {
+            "progress": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
+            "moderatorId": { ".validate": "newData.isString()" },
+            "phase": { ".validate": "newData.val() in ['lobby','playing','voting','ended']" }
+          }
+        }
+      }
+    }
+  -->
 </body>
 </html>
