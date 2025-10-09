@@ -58,6 +58,10 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 /* Estilos para el aviso de eliminación */
 .eliminated-notice{background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3);padding:10px;border-radius:8px;margin-top:12px}
 .eliminated-notice strong{color:#ff7b7b}
+
+/* Estilos para el control de nivel máximo */
+.max-level-controls{display:flex;align-items:center;gap:8px;margin-top:8px}
+.max-level-controls input{width:60px;padding:4px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:white;text-align:center}
 </style>
 </head>
 <body>
@@ -78,7 +82,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
       </div>
 
       <div id="moderatorControls" class="hidden" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button id="startBtn">Iniciar juego</button>
+        <!-- Botón de inicio eliminado según solicitud -->
         <button id="startVoteBtn" class="ghost">Iniciar votación</button>
         <button id="closeGameBtn" class="ghost">Cerrar juego</button>
       </div>
@@ -120,9 +124,18 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
         <p class="small">Progreso conjunto del equipo. ¡Trabajen juntos para llegar al nivel 30!</p>
         
         <!-- Controles de progreso grupal (solo para moderador) -->
-        <div id="groupProgressControls" class="hidden" style="margin-top:12px;display:flex;gap:8px">
-          <button id="addGroupPointBtn">+1 Punto</button>
-          <button id="removeGroupPointBtn" class="ghost">-1 Punto</button>
+        <div id="groupProgressControls" class="hidden" style="margin-top:12px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button id="addGroupPointBtn">+1 Punto</button>
+            <button id="removeGroupPointBtn" class="ghost">-1 Punto</button>
+          </div>
+          
+          <!-- Control para ajustar el nivel máximo -->
+          <div class="max-level-controls">
+            <span class="small">Nivel máximo:</span>
+            <input type="number" id="maxLevelInput" min="1" max="100" value="30">
+            <button id="setMaxLevelBtn" class="ghost">Aplicar</button>
+          </div>
         </div>
       </div>
     </div>
@@ -163,7 +176,6 @@ const joinBtn = document.getElementById("joinBtn");
 const leaveBtn = document.getElementById("leaveBtn");
 const participantsList = document.getElementById("participantsList");
 const moderatorControls = document.getElementById("moderatorControls");
-const startBtn = document.getElementById("startBtn");
 const startVoteBtn = document.getElementById("startVoteBtn");
 const closeGameBtn = document.getElementById("closeGameBtn");
 const gamePhaseEl = document.getElementById("gamePhase");
@@ -178,13 +190,15 @@ const groupProgressText = document.getElementById("groupProgressText");
 const groupProgressControls = document.getElementById("groupProgressControls");
 const addGroupPointBtn = document.getElementById("addGroupPointBtn");
 const removeGroupPointBtn = document.getElementById("removeGroupPointBtn");
+const maxLevelInput = document.getElementById("maxLevelInput");
+const setMaxLevelBtn = document.getElementById("setMaxLevelBtn");
 
 let currentUser = null;
 let unsubParts = null, unsubRoom = null, unsubEvents = null, unsubVotes = null;
 let localState = { participants: [], room: null };
 const ROOM_ID = "room_main";
 const LETTERS = "ABCDEFGHIJ".split("");
-const MAX_GROUP_LEVEL = 30;
+let MAX_GROUP_LEVEL = 30; // Ahora es variable
 let processedEventIds = new Set();
 let voteCheckInterval = null;
 
@@ -200,8 +214,15 @@ async function ensureRoomExists(){
   try{
     const snap = await getDoc(roomRef);
     if(!snap.exists()){
-      await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp(), groupLevel: 0 });
+      await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp(), groupLevel: 0, maxGroupLevel: MAX_GROUP_LEVEL });
       setStatus(`Sala "${ROOM_ID}" creada automáticamente.`);
+    } else {
+      // Actualizar MAX_GROUP_LEVEL con el valor guardado en Firestore
+      const data = snap.data();
+      if (data.maxGroupLevel) {
+        MAX_GROUP_LEVEL = data.maxGroupLevel;
+        maxLevelInput.value = MAX_GROUP_LEVEL;
+      }
     }
     return true;
   }catch(e){
@@ -434,6 +455,12 @@ function subscribeRoom(){
     localState.room = snap.exists() ? snap.data() : null;
     gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
     
+    // Actualizar el nivel máximo si está definido en Firestore
+    if (localState.room?.maxGroupLevel) {
+      MAX_GROUP_LEVEL = localState.room.maxGroupLevel;
+      maxLevelInput.value = MAX_GROUP_LEVEL;
+    }
+    
     updateGroupProgress();
     updateLocalUI();
 
@@ -571,6 +598,11 @@ function handleEvent(ev, id){
     }
   } else if(ev.type === "groupLevelChanged") {
     updateGroupProgress();
+  } else if(ev.type === "maxLevelChanged") {
+    MAX_GROUP_LEVEL = ev.newMaxLevel;
+    maxLevelInput.value = MAX_GROUP_LEVEL;
+    updateGroupProgress();
+    setStatus(`Nivel máximo cambiado a ${MAX_GROUP_LEVEL}`);
   }
 }
 
@@ -704,30 +736,30 @@ removeGroupPointBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al cambiar nivel grupal: "+(e?.message||e), true); }
 });
 
-/* ------- Iniciar juego ------- */
-startBtn.addEventListener("click", async ()=>{
+/* ------- Cambiar nivel máximo ------- */
+setMaxLevelBtn.addEventListener("click", async ()=>{
   try{
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar el juego."); return; }
-    const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
-    if(players.length < 1){ alert("Necesitas al menos 1 jugador para comenzar."); return; }
-
-    const chosen = players[Math.floor(Math.random() * players.length)];
-    const rivalUid = chosen.uid;
-    const round = (localState.room?.round || 0) + 1;
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    try{
-      await updateDoc(roomRef, { phase: "playing", round, rivalUid });
-      setStatus("Juego iniciado.");
-    }catch(upErr){
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "startGame", rivalUid, round, createdBy: currentUser.uid, createdAt: serverTimestamp()
-      });
-      setStatus("Juego iniciado (evento creado).");
+    if(!me || !me.isModerator){ alert("Solo el moderador puede cambiar el nivel máximo."); return; }
+    
+    const newMaxLevel = parseInt(maxLevelInput.value);
+    if(isNaN(newMaxLevel) || newMaxLevel < 1 || newMaxLevel > 100){
+      alert("Por favor ingresa un número válido entre 1 y 100.");
+      return;
     }
+    
+    MAX_GROUP_LEVEL = newMaxLevel;
+    
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    await updateDoc(roomRef, { maxGroupLevel: newMaxLevel });
+    
+    await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+      type: "maxLevelChanged", newMaxLevel, createdBy: currentUser.uid, createdAt: serverTimestamp()
+    });
+    
+    setStatus(`Nivel máximo cambiado a ${newMaxLevel}.`);
     updateGroupProgress();
-  }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
+  }catch(e){ console.error(e); setStatus("Error al cambiar nivel máximo: "+(e?.message||e), true); }
 });
 
 /* ------- Iniciar votación ------- */
