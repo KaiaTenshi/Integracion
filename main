@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Evento Competitivo Seguro</title>
+<style>
+:root{--bg:#0b1220;--card:#0f1724;--accent:#7dd3fc;--accent2:#60a5fa;--muted:#94a3b8;color-scheme:dark}
+html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+body{background:linear-gradient(180deg,#031026 0%,#071022 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:20px}
+.container{width:100%;max-width:980px;background:var(--card);border-radius:12px;padding:22px;box-shadow:0 8px 30px rgba(2,6,23,.6)}
+h1{margin:0 0 8px;font-size:22px;color:var(--accent)}
+p.lead{margin:0 0 18px;color:var(--muted)}
+.row{display:flex;gap:16px;flex-wrap:wrap}
+.card{background:rgba(255,255,255,0.03);padding:14px;border-radius:10px;flex:1;min-width:260px}
+button{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;padding:10px 14px;border-radius:8px;color:#042029;font-weight:700;cursor:pointer}
+button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--accent);font-weight:600}
+ul.participants{list-style:none;padding:0;margin:0}
+ul.participants li{padding:8px 6px;border-bottom:1px dashed rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center}
+.badge{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.04);font-weight:700}
+.hidden{display:none}
+.notice{background:rgba(0,0,0,0.25);padding:10px;border-radius:8px;margin-bottom:12px;color:var(--muted)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:60}
+.modal{background:#071028;padding:18px;border-radius:12px;min-width:320px;max-width:92%}
+.small{font-size:13px;color:var(--muted)}
+.auth-area{margin:12px 0;display:flex;gap:8px;align-items:center}
+.linklike{background:transparent;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Evento Competitivo Seguro</h1>
+  <p class="lead">¡Encuentra al intruso!</p>
+
+  <div id="status" class="notice">Conectando a Firebase...</div>
+
+  <!-- auth area removed: autenticación será anónima siempre -->
+
+  <div class="row">
+    <div class="card">
+      <h3>Lobby</h3>
+      <p class="small">Únete como invitado. Máximo 1 moderador + 10 participantes (A–J).</p>
+      <div style="margin-top:10px">
+        <button id="joinBtn" disabled>Unirme</button>
+        <button id="leaveBtn" class="ghost hidden">Salir</button>
+      </div>
+
+      <div id="moderatorControls" class="hidden" style="margin-top:12px">
+        <button id="startBtn">Iniciar juego</button>
+        <button id="startVoteBtn" class="ghost">Iniciar votación</button>
+      </div>
+
+      <div style="margin-top:14px">
+        <h4>Participantes</h4>
+        <ul id="participantsList" class="participants"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Estado del juego</h3>
+      <p id="gamePhase" class="small">-</p>
+
+      <div id="notifications" style="margin-top:12px"></div>
+
+      <div id="impostorNotice" class="hidden" style="margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
+        <strong>¡Eres el impostor!</strong>
+        <p class="small">Buena suerte...</p>
+      </div>
+
+      <div id="results" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <footer style="margin-top:14px" class="small">La primera persona en entrar será el <strong>Moderador</strong> (no vota). El moderador inicia la votación para que los jugadores A–J voten.</footer>
+</div>
+
+<div id="modalRoot" class="hidden"></div>
+
+<script type="module">
+/* -------------- Firebase + Auth + Firestore -------------- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+import {
+  getFirestore, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, deleteDoc, serverTimestamp, getDocs
+} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+
+/* ------- TU CONFIGURACIÓN ------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyAlxBHSufZtVZ-Sko7Db5TDOuwerEJ67Wg",
+  authDomain: "integracion-c3e71.firebaseapp.com",
+  databaseURL: "https://integracion-c3e71.firebaseio.com",
+  projectId: "integracion-c3e71",
+  storageBucket: "integracion-c3e71.firebasestorage.app",
+  messagingSenderId: "445727613761",
+  appId: "1:445727613761:web:48708f0368cba79444f7c0",
+  measurementId: "G-GSNV9BNP3W"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/* ------- UI refs ------- */
+const statusEl = document.getElementById("status");
+const joinBtn = document.getElementById("joinBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const participantsList = document.getElementById("participantsList");
+const moderatorControls = document.getElementById("moderatorControls");
+const startBtn = document.getElementById("startBtn");
+const startVoteBtn = document.getElementById("startVoteBtn");
+const gamePhaseEl = document.getElementById("gamePhase");
+const notificationsEl = document.getElementById("notifications");
+const impostorNotice = document.getElementById("impostorNotice");
+const resultsEl = document.getElementById("results");
+const modalRoot = document.getElementById("modalRoot");
+
+let currentUser = null;
+let unsubParts = null, unsubRoom = null;
+let localState = { participants: [], room: null };
+
+const ROOM_ID = "room_main";
+// players letters A-J (10 players)
+const LETTERS = "ABCDEFGHIJ".split("");
+
+/* ------- helpers UI ------- */
+function setStatus(txt, isError=false){
+  statusEl.textContent = txt;
+  statusEl.style.color = isError ? "#ff7b7b" : "";
+}
+function showNotification(txt){ notificationsEl.innerHTML = `<div class="small">${txt}</div>`; }
+function showModal(html){ modalRoot.innerHTML = `<div class="modal-backdrop">${html}</div>`; modalRoot.classList.remove("hidden"); }
+function closeModal(){ modalRoot.innerHTML = ""; modalRoot.classList.add("hidden"); }
+
+/* ------- Firestore helpers ------- */
+async function ensureRoomExists(){
+  const roomRef = doc(db,"rooms",ROOM_ID);
+  const snap = await getDoc(roomRef);
+  if(!snap.exists()) await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp() });
+}
+
+function renderParticipants(list){
+  participantsList.innerHTML = "";
+  // sort: moderator first, then by letter
+  list.sort((a,b)=>{
+    if(a.isModerator && !b.isModerator) return -1;
+    if(!a.isModerator && b.isModerator) return 1;
+    return (a.letter||"").localeCompare(b.letter||"");
+  }).forEach(p=>{
+    const li=document.createElement("li");
+    const left=document.createElement("div");
+    left.innerHTML = `<strong>${p.name||"Invitado"}</strong> <span class="small">(${p.alive===false?"Expulsado":(p.isModerator?"Moderador":(p.letter||"?"))})</span>`;
+    const right=document.createElement("div");
+    right.innerHTML = `<span class="badge">${p.alive===false?"fuera":(p.isModerator?"moderador":"jugador")}</span>`;
+    li.appendChild(left); li.appendChild(right);
+    participantsList.appendChild(li);
+  });
+}
+
+/* ------- Subscriptions ------- */
+function subscribeParticipants(){
+  const partsCol = collection(db,"rooms",ROOM_ID,"participants");
+  if(unsubParts) unsubParts();
+  unsubParts = onSnapshot(partsCol, snap=>{
+    const parts = [];
+    snap.forEach(d=>parts.push({ id:d.id, ...d.data() }));
+    localState.participants = parts;
+    renderParticipants(parts);
+    updateLocalUI();
+  }, err=>{
+    console.error("participants listen", err);
+    setStatus("Error al escuchar participantes: "+err.message, true);
+  });
+}
+
+function subscribeRoom(){
+  const roomRef = doc(db,"rooms",ROOM_ID);
+  if(unsubRoom) unsubRoom();
+  unsubRoom = onSnapshot(roomRef, snap=>{
+    localState.room = snap.exists() ? snap.data() : null;
+    gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
+    updateLocalUI();
+  }, err=>{
+    console.error("room listen", err);
+    setStatus("Error al escuchar sala: "+err.message, true);
+  });
+}
+
+/* ------- UI state updates ------- */
+function updateLocalUI(){
+  const alive = localState.participants.filter(p=>p.alive !== false);
+  const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+  if(me){ joinBtn.classList.add("hidden"); leaveBtn.classList.remove("hidden"); joinBtn.disabled = false; }
+  else { joinBtn.classList.remove("hidden"); leaveBtn.classList.add("hidden"); joinBtn.disabled = false; }
+
+  if(me && me.isModerator) moderatorControls.classList.remove("hidden"); else moderatorControls.classList.add("hidden");
+
+  // private doc listener set up below in auth handler; this toggles impostor notice in case private doc exists
+  if(!me) impostorNotice.classList.add("hidden");
+
+  if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
+  showNotification(`Conectados: ${alive.length} jugadores vivos. Total en sala: ${localState.participants.length} / 11.`);
+}
+
+/* ------- Utility: next letter & capacity ------- */
+function nextAvailableLetter(){
+  const used = localState.participants.map(p=>p.letter).filter(Boolean);
+  for(const l of LETTERS) if(!used.includes(l)) return l;
+  return null;
+}
+function isLobbyFull(){
+  // max 1 moderator + 10 players = 11 total
+  return localState.participants.length >= 11;
+}
+function hasModerator(){
+  return localState.participants.some(p => p.isModerator);
+}
+
+/* ------- Actions: join / leave ------- */
+joinBtn.addEventListener("click", async ()=>{
+  setStatus("Solicitando ingreso...");
+  try{
+    await ensureRoomExists();
+    if(isLobbyFull()){
+      setStatus("Lobby lleno (1 moderador + 10 jugadores).", true);
+      return;
+    }
+    const partRef = doc(db,"rooms",ROOM_ID,"participants",currentUser.uid);
+
+    // if no moderator exists, this join becomes moderator
+    const willBeModerator = !hasModerator();
+    if(willBeModerator){
+      await setDoc(partRef, { uid: currentUser.uid, name:`Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp() });
+      // private doc for moderator
+      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role:"moderator" });
+      setStatus("Ingresado como Moderador.");
+    } else {
+      const letter = nextAvailableLetter();
+      if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
+      await setDoc(partRef, { uid: currentUser.uid, name:`Invitado ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp() });
+      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role:"player", lastVoteFor:null, lastVoteAt:null });
+      setStatus(`Ingresado como Jugador ${letter}.`);
+    }
+  }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
+});
+
+leaveBtn.addEventListener("click", async ()=>{
+  if(!confirm("¿Seguro que quieres salir?")) return;
+  try{
+    await deleteDoc(doc(db,"rooms",ROOM_ID,"participants",currentUser.uid));
+    await deleteDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid));
+    setStatus("Has salido.");
+  }catch(e){ console.error(e); setStatus("Error al salir: "+(e?.message || e), true); }
+});
+
+/* ------- Voting modal helper (reused) ------- */
+function openVoteModalForUser(me){
+  const alive = localState.participants.filter(p=>p.alive !== false && p.uid !== currentUser.uid && !p.isModerator);
+  if(alive.length === 0){
+    showNotification("No hay jugadores para votar.");
+    return;
+  }
+  const html = `<div class="modal"><h4>Votar por jugador</h4>${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:150px">${p.name}</button></div>`).join("")}<div style="margin-top:10px"><button id="cancelVoteBtn">Cancelar</button></div></div>`;
+  showModal(html);
+  alive.forEach(p=>{
+    const btn = modalRoot.querySelector(`button[data-uid="${p.uid}"]`);
+    if(btn) btn.onclick = async ()=>{
+      try{
+        await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp(), promptToVote: false });
+        showNotification(`Has votado por ${p.name}`);
+        closeModal();
+      }catch(e){ console.error(e); setStatus("Error al votar: "+(e?.message||e), true); }
+    }
+  });
+  const cancel = modalRoot.querySelector("#cancelVoteBtn");
+  if(cancel) cancel.onclick = ()=> closeModal();
+}
+
+/* ------- Start juego (moderador) ------- */
+startBtn.addEventListener("click", async ()=>{
+  try{
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
+    if(players.length < 2){ alert("Se necesitan al menos 2 jugadores (excluyendo moderador) para comenzar."); return; }
+    // choose impostor at random among players (exclude moderator)
+    const impostorIdx = Math.floor(Math.random()*players.length);
+    for(let i=0;i<players.length;i++){
+      const p = players[i];
+      const role = (i===impostorIdx) ? "impostor" : "player";
+      await setDoc(doc(db,"rooms",ROOM_ID,"private", p.uid), { role }, { merge: true });
+    }
+    // set moderator private role explicitly
+    const mod = localState.participants.find(p=>p.isModerator);
+    if(mod) await setDoc(doc(db,"rooms",ROOM_ID,"private",mod.uid), { role: "moderator" }, { merge: true });
+
+    await updateDoc(roomRef, { phase: "playing", round: (localState.room?.round || 0) + 1 });
+    setStatus("Juego iniciado.");
+  }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
+});
+
+/* ------- Moderador: iniciar votación (notifica a jugadores) ------- */
+startVoteBtn.addEventListener("click", async ()=>{
+  try{
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    // set room to voting phase
+    await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp() });
+
+    // notify each alive player (except moderator) by setting promptToVote:true in their private doc
+    const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
+    const promises = players.map(p=> updateDoc(doc(db,"rooms",ROOM_ID,"private",p.uid), { promptToVote: true }) );
+    // if any private doc doesn't exist, set it
+    // to be safe, handle missing docs by trying setDoc on failure (best-effort)
+    try {
+      await Promise.all(promises);
+    } catch(err) {
+      // best effort: for players that may not have private doc, create/merge
+      for(const p of players){
+        try{
+          await setDoc(doc(db,"rooms",ROOM_ID,"private",p.uid), { promptToVote: true }, { merge: true });
+        }catch(e){ console.warn("no se pudo escribir private para", p.uid, e); }
+      }
+    }
+
+    // also show room-level notification
+    setStatus("Votación iniciada por el moderador. Se ha notificado a los jugadores.");
+    await updateDoc(roomRef, { lastAction: `Moderador inició votación`, lastActionAt: serverTimestamp() });
+  }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
+});
+
+/* ------- AUTH flows (ANÓNIMO ÚNICAMENTE) ------- */
+async function tryAnonSignIn(){
+  setStatus("Intentando autenticación anónima...");
+  try{
+    await signInAnonymously(auth);
+    // success handled by onAuthStateChanged
+  }catch(err){
+    console.error("anon sign-in err", err);
+    setStatus("Error de autenticación anónima: " + (err.message || err.code), true);
+  }
+}
+
+/* ------- onAuth state ------- */
+onAuthStateChanged(auth, async (user)=>{
+  if(user){
+    currentUser = user;
+    setStatus("Conectado (anónimo). UID: " + user.uid);
+    // habilitar botones principales
+    joinBtn.disabled = false;
+    try{
+      await ensureRoomExists();
+      subscribeParticipants();
+      subscribeRoom();
+
+      // set up listener for private doc to catch impostor & promptToVote
+      const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
+      onSnapshot(privateRef, snap=>{
+        const data = snap.exists() ? snap.data() : {};
+        // Impostor notice
+        const me = localState.participants.find(p=>p.uid === user.uid);
+        if(data.role === "impostor" && me?.alive !== false) impostorNotice.classList.remove("hidden");
+        else impostorNotice.classList.add("hidden");
+
+        // Prompt to vote: open modal automatically (only for players vivos, no moderador)
+        if(data.promptToVote && me && me.alive !== false && !me.isModerator){
+          // open modal for voting
+          openVoteModalForUser(me);
+          // clear promptToVote so it doesn't re-open repeatedly
+          updateDoc(privateRef, { promptToVote: false }).catch(e=>console.warn("clear promptToVote failed", e));
+        }
+      }, err=>{
+        // ignore read errors gracefully (rules may block)
+        console.debug("private listen:", err?.code || err);
+      });
+
+    }catch(e){ console.error(e); setStatus("Error suscribiendo: "+(e.message||e), true); }
+  } else {
+    setStatus("No autenticado (intento de anónimo automático).", true);
+    // intentar anónimo por defecto
+  }
+});
+
+/* ------- start initial auth attempt ------- */
+tryAnonSignIn();
+
+</script>
+</body>
+</html>
