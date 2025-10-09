@@ -42,7 +42,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
   <div class="row">
     <div class="card">
       <h3>Lobby & Participantes</h3>
-      <p class="small">Máximo 1 moderador + 10 participantes (A–J). Moderador no participa en votación.</p>
+      <p class="small">Máximo 1 moderador + 10 participantes. Moderador no participa en votación.</p>
 
       <div style="margin-top:10px">
         <button id="joinBtn" disabled>Unirme</button>
@@ -52,6 +52,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
       <div id="moderatorControls" class="hidden" style="margin-top:12px;display:flex;gap:8px;">
         <button id="startBtn">Iniciar juego</button>
         <button id="startVoteBtn" class="ghost">Iniciar votación</button>
+        <button id="endVoteBtn" class="ghost">Finalizar Votación</button>
         <button id="resetBtn" class="ghost">Reiniciar juego</button>
       </div>
 
@@ -73,6 +74,18 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
       </div>
 
       <div id="results" style="margin-top:12px"></div>
+
+      <!-- Barra de progreso grupal -->
+      <div id="groupProgressContainer" class="hidden" style="margin-top:16px">
+        <h4>Progreso Grupal</h4>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="progress-wrap" style="flex:1">
+            <div class="progress"><i id="groupProgressBar" style="width:0%"></i></div>
+          </div>
+          <div class="small mono" id="groupProgressText">0 / 10</div>
+        </div>
+        <p class="small">Progreso conjunto del equipo. ¡Trabajen juntos para llegar al nivel 10!</p>
+      </div>
     </div>
   </div>
 
@@ -113,20 +126,25 @@ const participantsList = document.getElementById("participantsList");
 const moderatorControls = document.getElementById("moderatorControls");
 const startBtn = document.getElementById("startBtn");
 const startVoteBtn = document.getElementById("startVoteBtn");
+const endVoteBtn = document.getElementById("endVoteBtn");
 const resetBtn = document.getElementById("resetBtn");
 const gamePhaseEl = document.getElementById("gamePhase");
 const notificationsEl = document.getElementById("notifications");
 const impostorNotice = document.getElementById("impostorNotice");
 const resultsEl = document.getElementById("results");
 const modalRoot = document.getElementById("modalRoot");
+const groupProgressContainer = document.getElementById("groupProgressContainer");
+const groupProgressBar = document.getElementById("groupProgressBar");
+const groupProgressText = document.getElementById("groupProgressText");
 
 let currentUser = null;
-let unsubParts = null, unsubRoom = null, unsubEvents = null;
+let unsubParts = null, unsubRoom = null, unsubEvents = null, unsubVotes = null;
 let localState = { participants: [], room: null };
 const ROOM_ID = "room_main";
 const LETTERS = "ABCDEFGHIJ".split("");
 const MAX_LEVEL = 10; // Cambiado de 50 a 10 niveles
 let processedEventIds = new Set();
+let voteCheckInterval = null;
 
 /* ------- UI helpers ------- */
 function setStatus(txt, isError=false){ statusEl.textContent = txt; statusEl.style.color = isError ? "#ff7b7b" : ""; }
@@ -165,23 +183,37 @@ function renderParticipants(list){
 
     const left = document.createElement("div");
     left.className = "part-left";
+    
+    // Mostrar nombre personalizado si existe, de lo contrario usar el predeterminado
+    const displayName = p.customName || p.name || "Invitado";
+    
     left.innerHTML = `
       <div class="part-row">
         <div style="display:flex;align-items:center;gap:8px">
-          <strong>${p.name || "Invitado"}</strong>
+          <strong>${displayName}</strong>
           <span class="small">(${p.isModerator ? "Moderador" : (p.letter || "?")})</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="level-num mono">${typeof p.level === 'number' ? p.level : 0}</div>
         </div>
       </div>
-      <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+    `;
+
+    // Solo mostrar barra de progreso para jugadores (no moderador)
+    if (!p.isModerator) {
+      const progressDiv = document.createElement("div");
+      progressDiv.style.marginTop = "8px";
+      progressDiv.style.display = "flex";
+      progressDiv.style.alignItems = "center";
+      progressDiv.style.gap = "10px";
+      progressDiv.innerHTML = `
         <div class="progress-wrap">
           <div class="progress"><i style="width:${Math.min(100, Math.round(((p.level||0)/MAX_LEVEL)*100))}%"></i></div>
         </div>
         <div class="small">/ ${MAX_LEVEL}</div>
-      </div>
-    `;
+      `;
+      left.appendChild(progressDiv);
+    }
 
     li.appendChild(left);
 
@@ -191,6 +223,16 @@ function renderParticipants(list){
     right.style.alignItems = "center";
     right.style.gap = "8px";
     right.innerHTML = `<span class="badge">${p.alive===false ? 'fuera' : (p.isModerator ? 'moderador' : 'jugador')}</span>`;
+
+    // Botón para editar nombre (solo para el propio jugador)
+    if (!p.isModerator && p.uid === currentUser?.uid) {
+      const editBtn = document.createElement("button");
+      editBtn.textContent = "Editar";
+      editBtn.className = "ghost";
+      editBtn.style.fontSize = "12px";
+      editBtn.onclick = () => openNameEditor(p);
+      right.appendChild(editBtn);
+    }
 
     // if currentUser is moderator, show +/- controls to change level for this participant (except moderator itself)
     const me = localState.participants.find(x=>x.uid === currentUser?.uid);
@@ -213,6 +255,61 @@ function renderParticipants(list){
   });
 }
 
+/* ------- Editor de nombre ------- */
+function openNameEditor(player) {
+  const html = `<div class="modal">
+    <h4>Editar Nombre</h4>
+    <div class="small">Personaliza tu nombre para que aparezca en el juego</div>
+    <div style="margin-top:12px">
+      <input type="text" id="nameInput" value="${player.customName || player.name || ''}" style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:white" placeholder="Ingresa tu nombre">
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button id="saveNameBtn">Guardar</button>
+      <button id="cancelNameBtn" class="ghost">Cancelar</button>
+    </div>
+  </div>`;
+  showModal(html);
+
+  const saveBtn = modalRoot.querySelector("#saveNameBtn");
+  const cancelBtn = modalRoot.querySelector("#cancelNameBtn");
+  const nameInput = modalRoot.querySelector("#nameInput");
+
+  saveBtn.onclick = async () => {
+    const newName = nameInput.value.trim();
+    if (newName) {
+      try {
+        await updateDoc(doc(db, "rooms", ROOM_ID, "participants", player.uid), {
+          customName: newName
+        });
+        closeModal();
+        setStatus("Nombre actualizado correctamente.");
+      } catch (e) {
+        console.error(e);
+        setStatus("Error al actualizar nombre: " + (e?.message || e), true);
+      }
+    }
+  };
+
+  cancelBtn.onclick = () => closeModal();
+}
+
+/* ------- Actualizar barra de progreso grupal ------- */
+function updateGroupProgress() {
+  const alivePlayers = localState.participants.filter(p => !p.isModerator && p.alive !== false);
+  if (alivePlayers.length === 0) {
+    groupProgressContainer.classList.add("hidden");
+    return;
+  }
+
+  const totalLevel = alivePlayers.reduce((sum, player) => sum + (player.level || 0), 0);
+  const maxPossibleLevel = alivePlayers.length * MAX_LEVEL;
+  const progressPercent = Math.min(100, Math.round((totalLevel / maxPossibleLevel) * 100));
+  
+  groupProgressBar.style.width = `${progressPercent}%`;
+  groupProgressText.textContent = `${totalLevel} / ${maxPossibleLevel}`;
+  groupProgressContainer.classList.remove("hidden");
+}
+
 /* ------- Subscriptions ------- */
 function subscribeParticipants(){
   const partsCol = collection(db,"rooms",ROOM_ID,"participants");
@@ -228,6 +325,7 @@ function subscribeParticipants(){
     }
     localState.participants = parts;
     renderParticipants(parts);
+    updateGroupProgress();
     updateLocalUI();
   }, err=>{
     console.error("participants listen", err);
@@ -248,6 +346,7 @@ function subscribeRoom(){
         p.level = levelMap?.[p.uid] ?? p.level ?? 0;
       });
       renderParticipants(localState.participants);
+      updateGroupProgress();
     }
     updateLocalUI();
 
@@ -297,6 +396,57 @@ function subscribeEvents(){
   });
 }
 
+/* ------- Votes subscription para detección automática ------- */
+function subscribeVotes() {
+  const votesCol = collection(db, "rooms", ROOM_ID, "votes");
+  if (unsubVotes) unsubVotes();
+  unsubVotes = onSnapshot(votesCol, async (snap) => {
+    // Si estamos en fase de votación, verificar si todos han votado
+    if (localState.room?.phase === 'voting') {
+      await checkAllVoted();
+    }
+  }, err => {
+    console.error("votes listen", err);
+  });
+}
+
+/* ------- Verificar si todos han votado ------- */
+async function checkAllVoted() {
+  try {
+    // Obtener jugadores vivos que pueden votar
+    const alivePlayers = localState.participants.filter(p => 
+      p.alive !== false && !p.isModerator
+    );
+    
+    // Obtener todos los votos
+    const votesSnap = await getDocs(collection(db, "rooms", ROOM_ID, "votes"));
+    const votes = [];
+    votesSnap.forEach(doc => votes.push(doc.data()));
+    
+    // Contar votos únicos (por usuario, usando private docs)
+    const voters = new Set();
+    for (const vote of votes) {
+      // Para encontrar quién votó, necesitamos consultar los documentos privados
+      // Esta es una aproximación - en una implementación real podrías almacenar el voterUid
+      const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
+      privateDocs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.lastVoteAt && data.role === 'player') {
+          voters.add(docSnap.id);
+        }
+      });
+    }
+    
+    // Si todos los jugadores vivos han votado, procesar automáticamente
+    if (voters.size >= alivePlayers.length) {
+      setStatus("Todos han votado. Procesando resultados automáticamente...");
+      await endVotingAndEliminateWeakest();
+    }
+  } catch (e) {
+    console.error("Error checking votes:", e);
+  }
+}
+
 /* handle events (startGame, startVote, setLevel, reset) */
 function handleEvent(ev, id){
   if(!ev || !ev.type) return;
@@ -315,8 +465,13 @@ function handleEvent(ev, id){
       localState.room = localState.room || {};
       localState.room.levels = { ...(localState.room.levels || {}), ...ev.levels };
     }
+    updateGroupProgress();
   } else if(ev.type === "startVote"){
     setStatus("Evento: Votación iniciada.");
+    // Iniciar verificación periódica de votos
+    if (voteCheckInterval) clearInterval(voteCheckInterval);
+    voteCheckInterval = setInterval(checkAllVoted, 3000); // Verificar cada 3 segundos
+    
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(me && me.alive !== false && !me.isModerator){
       openVoteModalForUser(me);
@@ -329,6 +484,7 @@ function handleEvent(ev, id){
     // re-render participants with updated levels
     localState.participants.forEach(p=>{ if(p.uid === ev.targetUid) p.level = ev.level; });
     renderParticipants(localState.participants);
+    updateGroupProgress();
   } else if(ev.type === "resetGame"){
     setStatus("Evento: Juego reiniciado por moderador.");
     // clear UI flags
@@ -340,6 +496,13 @@ function handleEvent(ev, id){
     localState.room.levels = {};
     localState.participants.forEach(p=> p.level = 0);
     renderParticipants(localState.participants);
+    updateGroupProgress();
+    
+    // Limpiar intervalo de verificación de votos
+    if (voteCheckInterval) {
+      clearInterval(voteCheckInterval);
+      voteCheckInterval = null;
+    }
   } else if(ev.type === "votingEnded") {
     // Mostrar resultados de la votación y eliminar al jugador más votado
     setStatus("Votación terminada. Resultados:");
@@ -350,6 +513,13 @@ function handleEvent(ev, id){
     if (weakestPlayer) {
       weakestPlayer.alive = false;
       renderParticipants(localState.participants);
+      updateGroupProgress();
+    }
+    
+    // Limpiar intervalo de verificación de votos
+    if (voteCheckInterval) {
+      clearInterval(voteCheckInterval);
+      voteCheckInterval = null;
     }
   }
 }
@@ -403,7 +573,7 @@ joinBtn.addEventListener("click", async ()=>{
       let letter = null;
       for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
       if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
-      await setDoc(partRef, { uid: currentUser.uid, name: `Invitado ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp(), level: 0 });
+      await setDoc(partRef, { uid: currentUser.uid, name: `Jugador ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp(), level: 0 });
       await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null });
       setStatus(`Ingresado como Jugador ${letter}.`);
     }
@@ -439,6 +609,7 @@ async function changePlayerLevel(targetUid, delta){
       });
       setStatus(`Nivel de jugador actualizado a ${newLevel} (evento creado como fallback).`);
     }
+    updateGroupProgress();
   }catch(e){ console.error(e); setStatus("Error al cambiar nivel: "+(e?.message||e), true); }
 }
 
@@ -454,7 +625,7 @@ function openVoteModalForUser(me){
 
   const html = `<div class="modal"><h4>Votar por jugador (anónimo)</h4>
     <div class="small">Elige a quien consideras el rival más débil.</div>
-    <div style="margin-top:10px">${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:190px">${p.name}</button></div>`).join("")}</div>
+    <div style="margin-top:10px">${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:190px">${p.customName || p.name}</button></div>`).join("")}</div>
     <div style="margin-top:12px"><button id="cancelVoteBtn" class="ghost">Cancelar</button></div>
   </div>`;
   showModal(html);
@@ -467,8 +638,11 @@ function openVoteModalForUser(me){
         await addDoc(collection(db,"rooms",ROOM_ID,"votes"), { targetUid: p.uid, createdAt: serverTimestamp() });
         // 2) update private/{uid} of this user so on reload we know they voted
         await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp() });
-        showNotification(`Has votado por ${p.name} (anon).`);
+        showNotification(`Has votado por ${p.customName || p.name} (anon).`);
         closeModal();
+        
+        // Verificar si todos han votado después de este voto
+        setTimeout(checkAllVoted, 1000);
       }catch(e){
         console.error(e);
         setStatus("Error al votar: "+(e?.message||e), true);
@@ -512,6 +686,7 @@ startBtn.addEventListener("click", async ()=>{
       });
       setStatus("Juego iniciado (evento creado).");
     }
+    updateGroupProgress();
   }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
 });
 
@@ -525,13 +700,18 @@ startVoteBtn.addEventListener("click", async ()=>{
     // set phase voting (try update, fallback to event)
     try{
       await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp() });
+      setStatus("Votación iniciada. Jugadores invitados a votar.");
     }catch(upErr){
       await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
         type: "startVote", createdBy: currentUser.uid, createdAt: serverTimestamp()
       });
+      setStatus("Votación iniciada (evento creado).");
     }
 
-    setStatus("Votación iniciada. Jugadores invitados a votar.");
+    // Iniciar verificación periódica de votos
+    if (voteCheckInterval) clearInterval(voteCheckInterval);
+    voteCheckInterval = setInterval(checkAllVoted, 3000);
+    
   }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
 });
 
@@ -562,7 +742,7 @@ async function endVotingAndEliminateWeakest() {
         maxVotes = count;
         weakestPlayerUid = uid;
         const player = localState.participants.find(p => p.uid === uid);
-        weakestPlayerName = player ? player.name : "Desconocido";
+        weakestPlayerName = player ? (player.customName || player.name) : "Desconocido";
       }
     }
     
@@ -593,6 +773,12 @@ async function endVotingAndEliminateWeakest() {
     try {
       for(const v of votesSnap.docs) await deleteDoc(v.ref);
     } catch(e){ console.debug("no se pudieron borrar votes", e); }
+    
+    // Limpiar intervalo de verificación de votos
+    if (voteCheckInterval) {
+      clearInterval(voteCheckInterval);
+      voteCheckInterval = null;
+    }
     
   } catch(e) {
     console.error(e);
@@ -631,6 +817,12 @@ resetBtn.addEventListener("click", async ()=>{
       for(const v of votesSnap.docs) await deleteDoc(v.ref);
     }catch(e){ console.debug("no se pudieron borrar votes (posible permiso).", e); }
 
+    // Limpiar intervalo de verificación de votos
+    if (voteCheckInterval) {
+      clearInterval(voteCheckInterval);
+      voteCheckInterval = null;
+    }
+
   }catch(e){ console.error(e); setStatus("Error al reiniciar: "+(e?.message || e), true); }
 });
 
@@ -651,6 +843,7 @@ onAuthStateChanged(auth, async (user)=>{
       subscribeParticipants();
       subscribeRoom();
       subscribeEvents();
+      subscribeVotes(); // Suscribirse a cambios en los votos
 
       // listen to own private doc (for lastVoteAt)
       const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
@@ -680,16 +873,6 @@ onAuthStateChanged(auth, async (user)=>{
 
 /* ------- start auth ------- */
 tryAnonSignIn();
-
-// Añadir botón para finalizar votación (solo visible para moderador)
-document.addEventListener('DOMContentLoaded', () => {
-  const endVoteBtn = document.createElement('button');
-  endVoteBtn.textContent = 'Finalizar Votación';
-  endVoteBtn.className = 'ghost';
-  endVoteBtn.id = 'endVoteBtn';
-  endVoteBtn.addEventListener('click', endVotingAndEliminateWeakest);
-  moderatorControls.appendChild(endVoteBtn);
-});
 
 </script>
 </body>
