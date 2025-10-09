@@ -327,12 +327,15 @@ function updateGroupProgress() {
   groupProgressBar.style.width = `${progressPercent}%`;
   groupProgressText.textContent = `${groupLevel} / ${MAX_GROUP_LEVEL}`;
   
-  // MOSTRAR LA BARRA DE PROGRESO PARA TODOS LOS USUARIOS, NO SOLO EL MODERADOR
-  // Solo ocultar si estamos en la fase de lobby o no hay datos
-  if (localState.room?.phase === "lobby" || localState.room === null) {
-    groupProgressContainer.classList.add("hidden");
-  } else {
+  // MOSTRAR LA BARRA DE PROGRESO PARA TODOS LOS USUARIOS SIEMPRE QUE HAYA UN JUEGO ACTIVO
+  const shouldShowProgress = localState.room && 
+                           localState.room.phase !== "lobby" && 
+                           localState.room.phase !== "ended";
+  
+  if (shouldShowProgress) {
     groupProgressContainer.classList.remove("hidden");
+  } else {
+    groupProgressContainer.classList.add("hidden");
   }
 }
 
