@@ -59,7 +59,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 <body>
 <div class="container">
   <h1>Rival Más Débil</h1>
-  <p class="lead">Sube niveles respondiendo bien. El moderador lidera las preguntas y controla niveles. Torre = 10 niveles.</p>
+  <p class="lead">Sube niveles respondiendo bien. El moderador lidera las preguntas y controla niveles. Torre = 30 niveles.</p>
 
   <div id="status" class="notice">Conectando a Firebase...</div>
 
@@ -76,8 +76,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
       <div id="moderatorControls" class="hidden" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
         <button id="startBtn">Iniciar juego</button>
         <button id="startVoteBtn" class="ghost">Iniciar votación</button>
-        <button id="endVoteBtn" class="ghost">Finalizar Votación</button>
-        <button id="resetBtn" class="ghost">Reiniciar juego</button>
+        <button id="closeGameBtn" class="ghost">Cerrar juego</button>
       </div>
 
       <div style="margin-top:14px">
@@ -114,14 +113,6 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
         <div id="groupProgressControls" class="hidden" style="margin-top:12px;display:flex;gap:8px">
           <button id="addGroupPointBtn">+1 Punto</button>
           <button id="removeGroupPointBtn" class="ghost">-1 Punto</button>
-        </div>
-        
-        <!-- Botones de votación -->
-        <div id="voteButtonsContainer" class="hidden" style="margin-top:16px">
-          <h4>Votación Activa</h4>
-          <p class="small">Elige al rival más débil:</p>
-          <div id="voteButtons" class="vote-buttons-container"></div>
-          <p class="small" style="margin-top:8px;color:var(--accent)">Tu voto es anónimo</p>
         </div>
       </div>
     </div>
@@ -164,8 +155,7 @@ const participantsList = document.getElementById("participantsList");
 const moderatorControls = document.getElementById("moderatorControls");
 const startBtn = document.getElementById("startBtn");
 const startVoteBtn = document.getElementById("startVoteBtn");
-const endVoteBtn = document.getElementById("endVoteBtn");
-const resetBtn = document.getElementById("resetBtn");
+const closeGameBtn = document.getElementById("closeGameBtn");
 const gamePhaseEl = document.getElementById("gamePhase");
 const notificationsEl = document.getElementById("notifications");
 const impostorNotice = document.getElementById("impostorNotice");
@@ -174,8 +164,6 @@ const modalRoot = document.getElementById("modalRoot");
 const groupProgressContainer = document.getElementById("groupProgressContainer");
 const groupProgressBar = document.getElementById("groupProgressBar");
 const groupProgressText = document.getElementById("groupProgressText");
-const voteButtonsContainer = document.getElementById("voteButtonsContainer");
-const voteButtons = document.getElementById("voteButtons");
 const groupProgressControls = document.getElementById("groupProgressControls");
 const addGroupPointBtn = document.getElementById("addGroupPointBtn");
 const removeGroupPointBtn = document.getElementById("removeGroupPointBtn");
@@ -535,8 +523,8 @@ function handleEvent(ev, id){
     setStatus("Evento: Votación iniciada.");
     if (voteCheckInterval) clearInterval(voteCheckInterval);
     voteCheckInterval = setInterval(checkAllVoted, 3000);
-  } else if(ev.type === "resetGame"){
-    setStatus("Evento: Juego reiniciado por moderador.");
+  } else if(ev.type === "gameClosed"){
+    setStatus("Evento: Juego cerrado por moderador.");
     impostorNotice.classList.add("hidden");
     localState.room = localState.room || {};
     localState.room.phase = "lobby";
@@ -725,11 +713,11 @@ startVoteBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
 });
 
-/* ------- Finalizar votación ------- */
+/* ------- Finalizar votación automáticamente ------- */
 async function endVotingAndEliminateWeakest() {
   try {
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede finalizar la votación."); return; }
+    // Esta función ahora se ejecuta automáticamente, no necesita verificar si es moderador
 
     const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
     const votes = [];
@@ -788,52 +776,59 @@ async function endVotingAndEliminateWeakest() {
   }
 }
 
-/* ------- Reiniciar juego ------- */
-resetBtn.addEventListener("click", async ()=>{
-  if(!confirm("¿Seguro que quieres reiniciar el juego? Esto reseteará niveles y fase a 'lobby'.")) return;
+/* ------- Cerrar juego ------- */
+closeGameBtn.addEventListener("click", async ()=>{
+  if(!confirm("¿Seguro que quieres cerrar el juego? Esto eliminará todos los datos de la partida actual.")) return;
   try{
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    if(!me || !me.isModerator){ alert("Solo el moderador puede reiniciar."); return; }
+    if(!me || !me.isModerator){ alert("Solo el moderador puede cerrar el juego."); return; }
 
+    // Eliminar todos los participantes
+    const participantsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"participants"));
+    for (const docSnap of participantsSnap.docs) {
+      await deleteDoc(doc(db,"rooms",ROOM_ID,"participants",docSnap.id));
+    }
+
+    // Eliminar todos los documentos privados
+    const privateSnap = await getDocs(collection(db,"rooms",ROOM_ID,"private"));
+    for (const docSnap of privateSnap.docs) {
+      await deleteDoc(doc(db,"rooms",ROOM_ID,"private",docSnap.id));
+    }
+
+    // Eliminar todos los votos
+    const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
+    for (const docSnap of votesSnap.docs) {
+      await deleteDoc(docSnap.ref);
+    }
+
+    // Eliminar todos los eventos
+    const eventsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"events"));
+    for (const docSnap of eventsSnap.docs) {
+      await deleteDoc(docSnap.ref);
+    }
+
+    // Resetear la sala
     const roomRef = doc(db,"rooms",ROOM_ID);
-    const resetPayload = { phase: "lobby", round: 0, rivalUid: null, votingStartedAt: null, groupLevel: 0 };
-    try{
-      await updateDoc(roomRef, resetPayload);
-      setStatus("Juego reiniciado.");
-    }catch(upErr){
-      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "resetGame", createdBy: currentUser.uid, createdAt: serverTimestamp()
-      });
-      setStatus("Juego reiniciado (evento creado).");
-    }
+    await updateDoc(roomRef, { 
+      phase: "lobby", 
+      round: 0, 
+      rivalUid: null, 
+      votingStartedAt: null, 
+      groupLevel: 0 
+    });
 
-    // Reactivar a todos los participantes eliminados
-    const players = localState.participants.filter(p => !p.isModerator);
-    for (const player of players) {
-      await updateDoc(doc(db,"rooms",ROOM_ID,"participants",player.uid), { alive: true });
-    }
+    await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+      type: "gameClosed", createdBy: currentUser.uid, createdAt: serverTimestamp()
+    });
 
-    // Limpiar votos
-    try{
-      const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
-      for(const v of votesSnap.docs) await deleteDoc(v.ref);
-    }catch(e){ console.debug("no se pudieron borrar votes", e); }
-
-    // Limpiar registros de votación en documentos privados
-    const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
-    for (const docSnap of privateDocs.docs) {
-      await updateDoc(doc(db, "rooms", ROOM_ID, "private", docSnap.id), {
-        lastVoteFor: null,
-        lastVoteAt: null
-      });
-    }
+    setStatus("Juego cerrado. Todos los datos han sido eliminados.");
 
     if (voteCheckInterval) {
       clearInterval(voteCheckInterval);
       voteCheckInterval = null;
     }
 
-  }catch(e){ console.error(e); setStatus("Error al reiniciar: "+(e?.message || e), true); }
+  }catch(e){ console.error(e); setStatus("Error al cerrar juego: "+(e?.message || e), true); }
 });
 
 /* ------- Auth flows y listeners ------- */
