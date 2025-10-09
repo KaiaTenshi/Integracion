@@ -1,52 +1,57 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Evento Competitivo Seguro</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Rival Más Débil — Evento Competitivo</title>
 <style>
-/* (igual que antes — mantuve tu CSS) */
 :root{--bg:#0b1220;--card:#0f1724;--accent:#7dd3fc;--accent2:#60a5fa;--muted:#94a3b8;color-scheme:dark}
-html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
-body{background:linear-gradient(180deg,#031026 0%,#071022 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:20px}
-.container{width:100%;max-width:980px;background:var(--card);border-radius:12px;padding:22px;box-shadow:0 8px 30px rgba(2,6,23,.6)}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#031026 0%,#071022 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:20px}
+.container{width:100%;max-width:1100px;background:var(--card);border-radius:12px;padding:22px;box-shadow:0 8px 30px rgba(2,6,23,.6)}
 h1{margin:0 0 8px;font-size:22px;color:var(--accent)}
 p.lead{margin:0 0 18px;color:var(--muted)}
 .row{display:flex;gap:16px;flex-wrap:wrap}
-.card{background:rgba(255,255,255,0.03);padding:14px;border-radius:10px;flex:1;min-width:260px}
-button{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;padding:10px 14px;border-radius:8px;color:#042029;font-weight:700;cursor:pointer}
+.card{background:rgba(255,255,255,0.03);padding:14px;border-radius:10px;flex:1;min-width:320px}
+button{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;padding:8px 12px;border-radius:8px;color:#042029;font-weight:700;cursor:pointer}
 button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--accent);font-weight:600}
 ul.participants{list-style:none;padding:0;margin:0}
-ul.participants li{padding:8px 6px;border-bottom:1px dashed rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center}
+ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);display:flex;align-items:center;gap:12px}
 .badge{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.04);font-weight:700}
-.hidden{display:none}
+.small{font-size:13px;color:var(--muted)}
 .notice{background:rgba(0,0,0,0.25);padding:10px;border-radius:8px;margin-bottom:12px;color:var(--muted)}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:60}
 .modal{background:#071028;padding:18px;border-radius:12px;min-width:320px;max-width:92%}
-.small{font-size:13px;color:var(--muted)}
-.auth-area{margin:12px 0;display:flex;gap:8px;align-items:center}
-.linklike{background:transparent;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0;font-size:13px}
+.progress-wrap{width:220px;background:rgba(255,255,255,0.03);border-radius:999px;padding:6px}
+.progress{height:10px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden}
+.progress > i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.part-left{flex:1;display:flex;flex-direction:column}
+.part-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%}
+.ctrls{display:flex;gap:6px}
+.level-num{min-width:34px;text-align:center}
+.mono{font-family:monospace}
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Evento Competitivo Seguro</h1>
-  <p class="lead">¡Encuentra al intruso!</p>
+  <h1>Rival Más Débil</h1>
+  <p class="lead">Sube niveles respondiendo bien. El moderador lidera las preguntas y controla niveles. Torre = 50 niveles.</p>
 
   <div id="status" class="notice">Conectando a Firebase...</div>
 
   <div class="row">
     <div class="card">
-      <h3>Lobby</h3>
-      <p class="small">Únete como invitado. Máximo 1 moderador + 10 participantes (A–J).</p>
+      <h3>Lobby & Participantes</h3>
+      <p class="small">Máximo 1 moderador + 10 participantes (A–J). Moderador no participa en votación.</p>
+
       <div style="margin-top:10px">
         <button id="joinBtn" disabled>Unirme</button>
         <button id="leaveBtn" class="ghost hidden">Salir</button>
       </div>
 
-      <div id="moderatorControls" class="hidden" style="margin-top:12px">
+      <div id="moderatorControls" class="hidden" style="margin-top:12px;display:flex;gap:8px;">
         <button id="startBtn">Iniciar juego</button>
         <button id="startVoteBtn" class="ghost">Iniciar votación</button>
+        <button id="resetBtn" class="ghost">Reiniciar juego</button>
       </div>
 
       <div style="margin-top:14px">
@@ -56,26 +61,27 @@ ul.participants li{padding:8px 6px;border-bottom:1px dashed rgba(255,255,255,0.0
     </div>
 
     <div class="card">
-      <h3>Estado del juego</h3>
+      <h3>Estado</h3>
       <p id="gamePhase" class="small">-</p>
 
       <div id="notifications" style="margin-top:12px"></div>
 
       <div id="impostorNotice" class="hidden" style="margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
-        <strong>¡Eres el impostor!</strong>
-        <p class="small">Buena suerte...</p>
+        <strong id="youAre">¡Eres el rival más débil!</strong>
+        <p class="small">Si te asignó el moderador, tendrás ventaja de prueba — pero el objetivo es mejorar tu nivel.</p>
       </div>
 
       <div id="results" style="margin-top:12px"></div>
     </div>
   </div>
 
-  <footer style="margin-top:14px" class="small">La primera persona en entrar será el <strong>Moderador</strong> (no vota). El moderador inicia la votación para que los jugadores A–J voten.</footer>
+  <footer style="margin-top:14px" class="small">La primera persona en entrar será el <strong>Moderador</strong>. Torre: 50 niveles.</footer>
 </div>
 
 <div id="modalRoot" class="hidden"></div>
 
 <script type="module">
+/* -------------- Firebase + Auth + Firestore -------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
@@ -83,7 +89,7 @@ import {
   updateDoc, deleteDoc, serverTimestamp, getDocs, addDoc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-/* TU CONFIG */
+/* ------- CONFIG ------- */
 const firebaseConfig = {
   apiKey: "AIzaSyAlxBHSufZtVZ-Sko7Db5TDOuwerEJ67Wg",
   authDomain: "integracion-c3e71.firebaseapp.com",
@@ -98,7 +104,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* UI refs */
+/* ------- UI refs ------- */
 const statusEl = document.getElementById("status");
 const joinBtn = document.getElementById("joinBtn");
 const leaveBtn = document.getElementById("leaveBtn");
@@ -106,6 +112,7 @@ const participantsList = document.getElementById("participantsList");
 const moderatorControls = document.getElementById("moderatorControls");
 const startBtn = document.getElementById("startBtn");
 const startVoteBtn = document.getElementById("startVoteBtn");
+const resetBtn = document.getElementById("resetBtn");
 const gamePhaseEl = document.getElementById("gamePhase");
 const notificationsEl = document.getElementById("notifications");
 const impostorNotice = document.getElementById("impostorNotice");
@@ -117,21 +124,24 @@ let unsubParts = null, unsubRoom = null, unsubEvents = null;
 let localState = { participants: [], room: null };
 const ROOM_ID = "room_main";
 const LETTERS = "ABCDEFGHIJ".split("");
+const MAX_LEVEL = 50;
 let processedEventIds = new Set();
 
+/* ------- UI helpers ------- */
 function setStatus(txt, isError=false){ statusEl.textContent = txt; statusEl.style.color = isError ? "#ff7b7b" : ""; }
 function showNotification(txt){ notificationsEl.innerHTML = `<div class="small">${txt}</div>`; }
 function showModal(html){ modalRoot.innerHTML = `<div class="modal-backdrop">${html}</div>`; modalRoot.classList.remove("hidden"); }
 function closeModal(){ modalRoot.innerHTML = ""; modalRoot.classList.add("hidden"); }
 function tsToMillis(t){ if(!t) return null; try{ if(typeof t.toMillis==='function') return t.toMillis(); if(t.seconds!==undefined) return t.seconds*1000 + Math.floor((t.nanoseconds||0)/1e6); }catch(e){} return null; }
 
-/* ensure room exists (CREATES if missing) */
+/* ------- Firestore helpers ------- */
+/* create room doc if missing */
 async function ensureRoomExists(){
   const roomRef = doc(db,"rooms",ROOM_ID);
   try{
     const snap = await getDoc(roomRef);
     if(!snap.exists()){
-      await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp() });
+      await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp(), levels: {} });
       setStatus(`Sala "${ROOM_ID}" creada automáticamente.`);
     }
     return true;
@@ -142,6 +152,7 @@ async function ensureRoomExists(){
   }
 }
 
+/* render participants list with level bars & moderator controls */
 function renderParticipants(list){
   participantsList.innerHTML = "";
   list.sort((a,b)=>{
@@ -149,23 +160,71 @@ function renderParticipants(list){
     if(!a.isModerator && b.isModerator) return 1;
     return (a.letter||"").localeCompare(b.letter||"");
   }).forEach(p=>{
-    const li=document.createElement("li");
-    const left=document.createElement("div");
-    left.innerHTML = `<strong>${p.name||"Invitado"}</strong> <span class="small">(${p.alive===false?"Expulsado":(p.isModerator?"Moderador":(p.letter||"?"))})</span>`;
-    const right=document.createElement("div");
-    right.innerHTML = `<span class="badge">${p.alive===false?"fuera":(p.isModerator?"moderador":"jugador")}</span>`;
-    li.appendChild(left); li.appendChild(right);
+    const li = document.createElement("li");
+
+    const left = document.createElement("div");
+    left.className = "part-left";
+    left.innerHTML = `
+      <div class="part-row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <strong>${p.name || "Invitado"}</strong>
+          <span class="small">(${p.isModerator ? "Moderador" : (p.letter || "?")})</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="level-num mono">${typeof p.level === 'number' ? p.level : 0}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+        <div class="progress-wrap">
+          <div class="progress"><i style="width:${Math.min(100, Math.round(((p.level||0)/MAX_LEVEL)*100))}%"></i></div>
+        </div>
+        <div class="small">/ ${MAX_LEVEL}</div>
+      </div>
+    `;
+
+    li.appendChild(left);
+
+    // right-side: badges & moderator controls
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "8px";
+    right.innerHTML = `<span class="badge">${p.alive===false ? 'fuera' : (p.isModerator ? 'moderador' : 'jugador')}</span>`;
+
+    // if currentUser is moderator, show +/- controls to change level for this participant (except moderator itself)
+    const me = localState.participants.find(x=>x.uid === currentUser?.uid);
+    if(me && me.isModerator && !p.isModerator){
+      const ctrl = document.createElement("div");
+      ctrl.className = "ctrls";
+      const plus = document.createElement("button");
+      plus.textContent = "+";
+      plus.onclick = ()=> changePlayerLevel(p.uid, +1);
+      const minus = document.createElement("button");
+      minus.className = "ghost";
+      minus.textContent = "−";
+      minus.onclick = ()=> changePlayerLevel(p.uid, -1);
+      ctrl.appendChild(plus); ctrl.appendChild(minus);
+      right.appendChild(ctrl);
+    }
+
+    li.appendChild(right);
     participantsList.appendChild(li);
   });
 }
 
-/* subs */
+/* ------- Subscriptions ------- */
 function subscribeParticipants(){
   const partsCol = collection(db,"rooms",ROOM_ID,"participants");
   if(unsubParts) unsubParts();
   unsubParts = onSnapshot(partsCol, snap=>{
     const parts = [];
     snap.forEach(d=>parts.push({ id:d.id, ...d.data() }));
+    // merge levels from room doc if present
+    const levelMap = localState.room?.levels || {};
+    for(const p of parts){
+      if(levelMap && levelMap[p.uid] !== undefined) p.level = levelMap[p.uid];
+      else p.level = p.level || 0;
+    }
     localState.participants = parts;
     renderParticipants(parts);
     updateLocalUI();
@@ -181,14 +240,43 @@ function subscribeRoom(){
   unsubRoom = onSnapshot(roomRef, snap=>{
     localState.room = snap.exists() ? snap.data() : null;
     gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
+    // push levels into participants if present
+    if(localState.participants.length > 0 && localState.room?.levels){
+      const levelMap = localState.room.levels;
+      localState.participants.forEach(p=>{
+        p.level = levelMap?.[p.uid] ?? p.level ?? 0;
+      });
+      renderParticipants(localState.participants);
+    }
     updateLocalUI();
+
+    // ON LOAD / SNAPSHOT: if phase === 'voting' open modal for players who haven't voted yet
+    try {
+      if(localState.room?.phase === 'voting'){
+        const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+        if(me && me.alive !== false && !me.isModerator){
+          // check private doc whether user already voted
+          getDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid)).then(snap=>{
+            const data = snap.exists() ? snap.data() : {};
+            if(!data?.lastVoteAt){
+              // open vote modal (safety to show even if listener sometimes missed)
+              openVoteModalForUser(me);
+            }
+          }).catch(e=>{
+            console.debug("private check", e);
+            // fallback: open vote modal anyway (best effort)
+            openVoteModalForUser(me);
+          });
+        }
+      }
+    } catch(e){ console.debug(e); }
   }, err=>{
     console.error("room listen", err);
     setStatus("Error al escuchar sala: "+err.message, true);
   });
 }
 
-/* subscribe to events subcollection (order by createdAt) */
+/* ------- Events subscription (fallback) ------- */
 function subscribeEvents(){
   const eventsCol = collection(db,"rooms",ROOM_ID,"events");
   const q = query(eventsCol, orderBy("createdAt","asc"));
@@ -208,44 +296,65 @@ function subscribeEvents(){
   });
 }
 
-/* handle event objects */
+/* handle events (startGame, startVote, setLevel, reset) */
 function handleEvent(ev, id){
   if(!ev || !ev.type) return;
   if(ev.type === "startGame"){
-    setStatus("Evento: Juego iniciado (evento).");
-    // show impostor if matches
+    setStatus("Evento: Juego iniciado.");
+    // if impostorUid equals current user -> show special notice
     if(currentUser && ev.impostorUid === currentUser.uid){
       impostorNotice.classList.remove("hidden");
+      document.getElementById("youAre").textContent = "¡Eres el rival más débil!";
     } else {
       impostorNotice.classList.add("hidden");
     }
-    // optionally update local UI phase
-    gamePhaseEl.textContent = `Fase: playing | Ronda: ${ev.round || (localState.room?.round||0)}`;
+    // apply levels map if provided
+    if(ev.levels){
+      // levels is a map uid->level sent by moderator
+      localState.room = localState.room || {};
+      localState.room.levels = { ...(localState.room.levels || {}), ...ev.levels };
+    }
   } else if(ev.type === "startVote"){
     setStatus("Evento: Votación iniciada.");
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(me && me.alive !== false && !me.isModerator){
-      // abrir modal de votación
       openVoteModalForUser(me);
     }
-    gamePhaseEl.textContent = `Fase: voting | Ronda: ${localState.room?.round || 0}`;
+  } else if(ev.type === "setLevel"){
+    // update UI levels immediately (best effort)
+    localState.room = localState.room || {};
+    localState.room.levels = localState.room.levels || {};
+    localState.room.levels[ev.targetUid] = ev.level;
+    // re-render participants with updated levels
+    localState.participants.forEach(p=>{ if(p.uid === ev.targetUid) p.level = ev.level; });
+    renderParticipants(localState.participants);
+  } else if(ev.type === "resetGame"){
+    setStatus("Evento: Juego reiniciado por moderador.");
+    // clear UI flags
+    impostorNotice.classList.add("hidden");
+    // reset local state
+    localState.room = localState.room || {};
+    localState.room.phase = "lobby";
+    localState.room.round = 0;
+    localState.room.levels = {};
+    localState.participants.forEach(p=> p.level = 0);
+    renderParticipants(localState.participants);
   }
 }
 
-/* UI updates */
+/* ------- UI state updates ------- */
 function updateLocalUI(){
   const alive = localState.participants.filter(p=>p.alive !== false);
   const me = localState.participants.find(p=>p.uid === currentUser?.uid);
   if(me){ joinBtn.classList.add("hidden"); leaveBtn.classList.remove("hidden"); joinBtn.disabled = false; }
   else { joinBtn.classList.remove("hidden"); leaveBtn.classList.add("hidden"); joinBtn.disabled = false; }
-
   if(me && me.isModerator) moderatorControls.classList.remove("hidden"); else moderatorControls.classList.add("hidden");
   if(!me) impostorNotice.classList.add("hidden");
   if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
-  showNotification(`Conectados: ${alive.length} jugadores vivos. Total en sala: ${localState.participants.length} / 11.`);
+  showNotification(`Conectados: ${alive.length} jugadores vivos. Total: ${localState.participants.length} / 11.`);
 }
 
-/* helpers */
+/* ------- Helpers de lobby ------- */
 function nextAvailableLetter(){
   const used = localState.participants.map(p=>p.letter).filter(Boolean);
   for(const l of LETTERS) if(!used.includes(l)) return l;
@@ -253,7 +362,7 @@ function nextAvailableLetter(){
 }
 function isLobbyFull(){ return localState.participants.length >= 11; }
 
-/* join */
+/* ------- Join (con lectura puntual para evitar race) ------- */
 joinBtn.addEventListener("click", async ()=>{
   setStatus("Solicitando ingreso...");
   try{
@@ -261,33 +370,28 @@ joinBtn.addEventListener("click", async ()=>{
     if(!ok) return;
     if(isLobbyFull()){ setStatus("Lobby lleno (1 moderador + 10 jugadores).", true); return; }
 
-    // leer participantes actuales de forma puntual
     const partsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"participants"));
-    const parts = [];
-    partsSnap.forEach(d => parts.push({ id:d.id, ...d.data() }));
-
-    const hasModerator = parts.some(p => p.isModerator);
+    const parts = []; partsSnap.forEach(d=>parts.push({ id:d.id, ...d.data() }));
+    const hasModerator = parts.some(p=>p.isModerator);
     const usedLetters = parts.map(p=>p.letter).filter(Boolean);
     const partRef = doc(db,"rooms",ROOM_ID,"participants",currentUser.uid);
 
     if(!hasModerator){
-      await setDoc(partRef, { uid: currentUser.uid, name: `Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp() });
+      await setDoc(partRef, { uid: currentUser.uid, name: `Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp(), level: 0 });
       await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "moderator" });
       setStatus("Ingresado como Moderador.");
     } else {
       let letter = null;
       for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
       if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
-
-      await setDoc(partRef, { uid: currentUser.uid, name: `Invitado ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp() });
+      await setDoc(partRef, { uid: currentUser.uid, name: `Invitado ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp(), level: 0 });
       await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null });
       setStatus(`Ingresado como Jugador ${letter}.`);
     }
-
   }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
 });
 
-/* leave */
+/* ------- Leave ------- */
 leaveBtn.addEventListener("click", async ()=>{
   if(!confirm("¿Seguro que quieres salir?")) return;
   try{
@@ -297,72 +401,156 @@ leaveBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al salir: "+(e?.message || e), true); }
 });
 
-/* voting modal */
+/* ------- Cambiar nivel de jugador (moderador) ------- */
+async function changePlayerLevel(targetUid, delta){
+  try{
+    // compute current level
+    const curLevel = (localState.room?.levels?.[targetUid] ?? localState.participants.find(p=>p.uid===targetUid)?.level ?? 0);
+    let newLevel = Math.max(0, Math.min(MAX_LEVEL, curLevel + delta));
+
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    // try to update room.levels via updateDoc (moderator may have permission)
+    try{
+      await updateDoc(roomRef, { [`levels.${targetUid}`]: newLevel });
+      setStatus(`Nivel de jugador actualizado a ${newLevel} (escrito en room.levels).`);
+    }catch(upErr){
+      // fallback: crear evento setLevel
+      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+        type: "setLevel", targetUid, level: newLevel, createdBy: currentUser.uid, createdAt: serverTimestamp()
+      });
+      setStatus(`Nivel de jugador actualizado a ${newLevel} (evento creado como fallback).`);
+    }
+  }catch(e){ console.error(e); setStatus("Error al cambiar nivel: "+(e?.message||e), true); }
+}
+
+/* ------- Modal de votación (anónimo) ------- */
 function openVoteModalForUser(me){
+  // only allow voting if phase is voting
+  if(localState.room?.phase !== "voting"){
+    showNotification("No hay votación activa.");
+    return;
+  }
   const alive = localState.participants.filter(p=>p.alive !== false && p.uid !== currentUser.uid && !p.isModerator);
   if(alive.length === 0){ showNotification("No hay jugadores para votar."); return; }
-  const html = `<div class="modal"><h4>Votar por jugador</h4>${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:150px">${p.name}</button></div>`).join("")}<div style="margin-top:10px"><button id="cancelVoteBtn">Cancelar</button></div></div>`;
+
+  const html = `<div class="modal"><h4>Votar por jugador (anónimo)</h4>
+    <div class="small">Elige a quien consideras el rival más débil.</div>
+    <div style="margin-top:10px">${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:190px">${p.name}</button></div>`).join("")}</div>
+    <div style="margin-top:12px"><button id="cancelVoteBtn" class="ghost">Cancelar</button></div>
+  </div>`;
   showModal(html);
+
   alive.forEach(p=>{
     const btn = modalRoot.querySelector(`button[data-uid="${p.uid}"]`);
-    if(btn) btn.onclick = async ()=>{ try{
-      await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp() });
-      showNotification(`Has votado por ${p.name}`); closeModal();
-    }catch(e){ console.error(e); setStatus("Error al votar: "+(e?.message||e), true); } };
+    if(btn) btn.onclick = async ()=>{
+      try{
+        // 1) CREATE anonymous vote doc in votes subcollection (no uid stored)
+        await addDoc(collection(db,"rooms",ROOM_ID,"votes"), { targetUid: p.uid, createdAt: serverTimestamp() });
+        // 2) update private/{uid} of this user so on reload we know they voted
+        await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp() });
+        showNotification(`Has votado por ${p.name} (anon).`);
+        closeModal();
+      }catch(e){
+        console.error(e);
+        setStatus("Error al votar: "+(e?.message||e), true);
+      }
+    };
   });
+
   const cancel = modalRoot.querySelector("#cancelVoteBtn");
   if(cancel) cancel.onclick = ()=> closeModal();
 }
 
-/* start game -> Crea evento 'startGame' en rooms/ROOM_ID/events */
+/* ------- Iniciar juego (moderador) ------- */
 startBtn.addEventListener("click", async ()=>{
   try{
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar el juego."); return; }
     const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
-    if(players.length < 2){ alert("Se necesitan al menos 2 jugadores (excluyendo moderador) para comenzar."); return; }
+    if(players.length < 1){ alert("Necesitas al menos 1 jugador para comenzar."); return; }
 
+    // choose a "rival más débil" (impostor-like) randomly among players if you want, but in this variant it's optional.
     const chosen = players[Math.floor(Math.random() * players.length)];
-    const impostorUid = chosen.uid;
+    const rivalUid = chosen.uid;
     const round = (localState.room?.round || 0) + 1;
 
-    // crear evento en subcollection events
-    await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-      type: "startGame",
-      impostorUid,
-      round,
-      createdBy: currentUser.uid,
-      createdAt: serverTimestamp()
+    // build initial levels map if not exist (keep existing otherwise)
+    const newLevels = { ...(localState.room?.levels || {}) };
+    // ensure every player has a level key
+    localState.participants.forEach(p => {
+      if(!p.isModerator) newLevels[p.uid] = newLevels[p.uid] ?? (p.level ?? 0);
     });
 
-    // intentar actualizar room (mejor esfuerzo). Si falla por permisos, lo ignoramos.
-    try {
-      await updateDoc(doc(db,"rooms",ROOM_ID), { phase: "playing", round });
-    } catch(upErr){
-      console.debug("No se pudo actualizar rooms doc (posible falta de permisos). Continuando con evento.", upErr?.message || upErr);
+    // attempt to update room doc with new phase, round and levels
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    try{
+      await updateDoc(roomRef, { phase: "playing", round, rivalUid, levels: newLevels });
+      setStatus("Juego iniciado. room doc actualizado.");
+    }catch(upErr){
+      // fallback: create an event with payload
+      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+        type: "startGame", rivalUid, round, levels: newLevels, createdBy: currentUser.uid, createdAt: serverTimestamp()
+      });
+      setStatus("Juego iniciado (evento creado).");
     }
-
-    setStatus("Juego iniciado y evento creado (startGame).");
   }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
 });
 
-/* start vote -> crea evento 'startVote' */
+/* ------- Iniciar votación (moderador) ------- */
 startVoteBtn.addEventListener("click", async ()=>{
   try{
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar la votación."); return; }
-    await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-      type: "startVote",
-      createdBy: currentUser.uid,
-      createdAt: serverTimestamp()
-    });
-    try { await updateDoc(doc(db,"rooms",ROOM_ID), { phase: "voting" }); } catch(e){ /* ignore */ }
-    setStatus("Votación iniciada y evento creado (startVote).");
+
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    // set phase voting (try update, fallback to event)
+    try{
+      await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp() });
+    }catch(upErr){
+      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+        type: "startVote", createdBy: currentUser.uid, createdAt: serverTimestamp()
+      });
+    }
+
+    setStatus("Votación iniciada. Jugadores invitados a votar.");
   }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
 });
 
-/* auth */
-async function tryAnonSignIn(){ setStatus("Intentando autenticación anónima..."); try{ await signInAnonymously(auth); }catch(err){ console.error(err); setStatus("Error de autenticación anónima: "+(err?.message||err), true); } }
+/* ------- Reiniciar juego (moderador) ------- */
+resetBtn.addEventListener("click", async ()=>{
+  if(!confirm("¿Seguro que quieres reiniciar el juego? Esto reseteará niveles y fase a 'lobby'.")) return;
+  try{
+    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+    if(!me || !me.isModerator){ alert("Solo el moderador puede reiniciar."); return; }
+
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    const resetPayload = { phase: "lobby", round: 0, rivalUid: null, votingStartedAt: null, levels: {} };
+    try{
+      await updateDoc(roomRef, resetPayload);
+      setStatus("Juego reiniciado (room doc actualizado).");
+    }catch(upErr){
+      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+        type: "resetGame", createdBy: currentUser.uid, createdAt: serverTimestamp()
+      });
+      setStatus("Juego reiniciado (evento creado).");
+    }
+
+    // optionally clear votes subcollection (moderator can delete them if rules permit; here we attempt but ignore errors)
+    try{
+      const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
+      for(const v of votesSnap.docs) await deleteDoc(v.ref);
+    }catch(e){ console.debug("no se pudieron borrar votes (posible permiso).", e); }
+
+    // clear private votes for all participants? not possible from client securely; each user keeps their private doc.
+  }catch(e){ console.error(e); setStatus("Error al reiniciar: "+(e?.message || e), true); }
+});
+
+/* ------- Auth flows y listeners ------- */
+async function tryAnonSignIn(){
+  setStatus("Intentando autenticación anónima...");
+  try{ await signInAnonymously(auth); }
+  catch(err){ console.error("anon sign-in err", err); setStatus("Error de autenticación anónima: " + (err.message || err.code), true); }
+}
 
 onAuthStateChanged(auth, async (user)=>{
   if(user){
@@ -373,11 +561,27 @@ onAuthStateChanged(auth, async (user)=>{
       await ensureRoomExists();
       subscribeParticipants();
       subscribeRoom();
-      subscribeEvents(); // escucha events
+      subscribeEvents();
 
-      // escuchar private/{uid} propio si quieres usarlo
+      // listen to own private doc (for lastVoteAt)
       const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
-      onSnapshot(privateRef, snap=>{}, err=>{ console.debug("private listen:", err?.code||err); });
+      onSnapshot(privateRef, snap=>{
+        // no-op for now; used to persist lastVoteAt etc.
+      }, err=>{ console.debug("private listen:", err?.code || err); });
+
+      // Extra safety: if room is already in voting phase, check and prompt if needed (covers browsers that miss events)
+      setTimeout(async ()=>{
+        if(localState.room?.phase === 'voting'){
+          const me = localState.participants.find(p=>p.uid === currentUser.uid);
+          if(me && me.alive !== false && !me.isModerator){
+            try{
+              const priv = await getDoc(privateRef);
+              const pd = priv.exists() ? priv.data() : {};
+              if(!pd?.lastVoteAt) openVoteModalForUser(me);
+            }catch(e){ console.debug("private check on load", e); openVoteModalForUser(me); }
+          }
+        }
+      }, 800); // short delay to let listeners attach
 
     }catch(e){ console.error(e); setStatus("Error suscribiendo: "+(e.message||e), true); }
   } else {
@@ -385,7 +589,9 @@ onAuthStateChanged(auth, async (user)=>{
   }
 });
 
+/* ------- start auth ------- */
 tryAnonSignIn();
+
 </script>
 </body>
 </html>
