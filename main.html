@@ -326,7 +326,14 @@ function updateGroupProgress() {
   
   groupProgressBar.style.width = `${progressPercent}%`;
   groupProgressText.textContent = `${groupLevel} / ${MAX_GROUP_LEVEL}`;
-  groupProgressContainer.classList.remove("hidden");
+  
+  // MOSTRAR LA BARRA DE PROGRESO PARA TODOS LOS USUARIOS, NO SOLO EL MODERADOR
+  // Solo ocultar si estamos en la fase de lobby o no hay datos
+  if (localState.room?.phase === "lobby" || localState.room === null) {
+    groupProgressContainer.classList.add("hidden");
+  } else {
+    groupProgressContainer.classList.remove("hidden");
+  }
 }
 
 /* ------- Mostrar ventana de votación ------- */
@@ -629,6 +636,7 @@ function updateLocalUI(){
     joinBtn.disabled = false; 
   }
   
+  // SOLO LOS CONTROLES DEBERÍAN ESTAR OCULTOS PARA NO MODERADORES, NO LA BARRA DE PROGRESO
   if(me && me.isModerator) {
     moderatorControls.classList.remove("hidden");
     groupProgressControls.classList.remove("hidden");
