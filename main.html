@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Evento Competitivo Seguro</title>
 <style>
+/* (igual que antes — mantuve tu CSS) */
 :root{--bg:#0b1220;--card:#0f1724;--accent:#7dd3fc;--accent2:#60a5fa;--muted:#94a3b8;color-scheme:dark}
 html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
 body{background:linear-gradient(180deg,#031026 0%,#071022 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -75,16 +76,14 @@ ul.participants li{padding:8px 6px;border-bottom:1px dashed rgba(255,255,255,0.0
 <div id="modalRoot" class="hidden"></div>
 
 <script type="module">
-/* -------------- Firebase + Auth + Firestore -------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
-  getAuth, signInAnonymously, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import {
-  getFirestore, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, deleteDoc, serverTimestamp, getDocs
+  getFirestore, doc, setDoc, getDoc, onSnapshot, collection,
+  updateDoc, deleteDoc, serverTimestamp, getDocs, addDoc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-/* ------- TU CONFIGURACIÓN ------- */
+/* TU CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyAlxBHSufZtVZ-Sko7Db5TDOuwerEJ67Wg",
   authDomain: "integracion-c3e71.firebaseapp.com",
@@ -95,12 +94,11 @@ const firebaseConfig = {
   appId: "1:445727613761:web:48708f0368cba79444f7c0",
   measurementId: "G-GSNV9BNP3W"
 };
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* ------- UI refs ------- */
+/* UI refs */
 const statusEl = document.getElementById("status");
 const joinBtn = document.getElementById("joinBtn");
 const leaveBtn = document.getElementById("leaveBtn");
@@ -115,42 +113,24 @@ const resultsEl = document.getElementById("results");
 const modalRoot = document.getElementById("modalRoot");
 
 let currentUser = null;
-let unsubParts = null, unsubRoom = null;
+let unsubParts = null, unsubRoom = null, unsubEvents = null;
 let localState = { participants: [], room: null };
-
 const ROOM_ID = "room_main";
-// players letters A-J (10 players)
 const LETTERS = "ABCDEFGHIJ".split("");
+let processedEventIds = new Set();
 
-// last room snapshot to detect changes
-let lastRoomSnapshot = null;
-
-/* ------- helpers UI ------- */
-function setStatus(txt, isError=false){
-  statusEl.textContent = txt;
-  statusEl.style.color = isError ? "#ff7b7b" : "";
-}
+function setStatus(txt, isError=false){ statusEl.textContent = txt; statusEl.style.color = isError ? "#ff7b7b" : ""; }
 function showNotification(txt){ notificationsEl.innerHTML = `<div class="small">${txt}</div>`; }
 function showModal(html){ modalRoot.innerHTML = `<div class="modal-backdrop">${html}</div>`; modalRoot.classList.remove("hidden"); }
 function closeModal(){ modalRoot.innerHTML = ""; modalRoot.classList.add("hidden"); }
+function tsToMillis(t){ if(!t) return null; try{ if(typeof t.toMillis==='function') return t.toMillis(); if(t.seconds!==undefined) return t.seconds*1000 + Math.floor((t.nanoseconds||0)/1e6); }catch(e){} return null; }
 
-/* helper to convert timestamp -> ms */
-function tsToMillis(t){
-  if(!t) return null;
-  try { if(typeof t.toMillis === "function") return t.toMillis(); if(t.seconds !== undefined) return t.seconds*1000 + Math.floor((t.nanoseconds||0)/1e6); } catch(e){ return null; }
-}
-
-/* ------- Firestore helpers ------- */
-/**
- * Si no existe rooms/ROOM_ID, lo crea (ahora asumo que ajustaste reglas).
- * Devuelve true si existe o fue creado, false si hubo error.
- */
+/* ensure room exists (CREATES if missing) */
 async function ensureRoomExists(){
   const roomRef = doc(db,"rooms",ROOM_ID);
   try{
     const snap = await getDoc(roomRef);
     if(!snap.exists()){
-      // crear con campos iniciales
       await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp() });
       setStatus(`Sala "${ROOM_ID}" creada automáticamente.`);
     }
@@ -162,7 +142,6 @@ async function ensureRoomExists(){
   }
 }
 
-/* ------- render participantes ------- */
 function renderParticipants(list){
   participantsList.innerHTML = "";
   list.sort((a,b)=>{
@@ -180,7 +159,7 @@ function renderParticipants(list){
   });
 }
 
-/* ------- Subscriptions ------- */
+/* subs */
 function subscribeParticipants(){
   const partsCol = collection(db,"rooms",ROOM_ID,"participants");
   if(unsubParts) unsubParts();
@@ -200,46 +179,60 @@ function subscribeRoom(){
   const roomRef = doc(db,"rooms",ROOM_ID);
   if(unsubRoom) unsubRoom();
   unsubRoom = onSnapshot(roomRef, snap=>{
-    const prev = lastRoomSnapshot;
-    const newRoom = snap.exists() ? snap.data() : null;
-    localState.room = newRoom;
+    localState.room = snap.exists() ? snap.data() : null;
     gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
     updateLocalUI();
-
-    // detectar asignación de impostor
-    try{
-      const prevImpostor = prev?.impostorUid || null;
-      const newImpostor = newRoom?.impostorUid || null;
-      if(newImpostor && newImpostor !== prevImpostor){
-        if(currentUser && newImpostor === currentUser.uid){
-          impostorNotice.classList.remove("hidden");
-        } else {
-          impostorNotice.classList.add("hidden");
-        }
-      }
-    }catch(e){ console.debug(e); }
-
-    // detectar inicio de votación por cambio de timestamp
-    try{
-      const prevVoting = tsToMillis(prev?.votingStartedAt);
-      const newVoting = tsToMillis(newRoom?.votingStartedAt);
-      if(newVoting && newVoting !== prevVoting){
-        const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-        if(me && me.alive !== false && !me.isModerator){
-          // abrir modal para votar
-          openVoteModalForUser(me);
-        }
-      }
-    }catch(e){ console.debug(e); }
-
-    lastRoomSnapshot = newRoom ? { ...newRoom } : null;
   }, err=>{
     console.error("room listen", err);
     setStatus("Error al escuchar sala: "+err.message, true);
   });
 }
 
-/* ------- UI updates ------- */
+/* subscribe to events subcollection (order by createdAt) */
+function subscribeEvents(){
+  const eventsCol = collection(db,"rooms",ROOM_ID,"events");
+  const q = query(eventsCol, orderBy("createdAt","asc"));
+  if(unsubEvents) unsubEvents();
+  unsubEvents = onSnapshot(q, snap=>{
+    snap.docChanges().forEach(change=>{
+      if(change.type === "added"){
+        const id = change.doc.id;
+        if(processedEventIds.has(id)) return;
+        processedEventIds.add(id);
+        const ev = change.doc.data();
+        handleEvent(ev, id);
+      }
+    });
+  }, err=>{
+    console.error("events listen", err);
+  });
+}
+
+/* handle event objects */
+function handleEvent(ev, id){
+  if(!ev || !ev.type) return;
+  if(ev.type === "startGame"){
+    setStatus("Evento: Juego iniciado (evento).");
+    // show impostor if matches
+    if(currentUser && ev.impostorUid === currentUser.uid){
+      impostorNotice.classList.remove("hidden");
+    } else {
+      impostorNotice.classList.add("hidden");
+    }
+    // optionally update local UI phase
+    gamePhaseEl.textContent = `Fase: playing | Ronda: ${ev.round || (localState.room?.round||0)}`;
+  } else if(ev.type === "startVote"){
+    setStatus("Evento: Votación iniciada.");
+    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+    if(me && me.alive !== false && !me.isModerator){
+      // abrir modal de votación
+      openVoteModalForUser(me);
+    }
+    gamePhaseEl.textContent = `Fase: voting | Ronda: ${localState.room?.round || 0}`;
+  }
+}
+
+/* UI updates */
 function updateLocalUI(){
   const alive = localState.participants.filter(p=>p.alive !== false);
   const me = localState.participants.find(p=>p.uid === currentUser?.uid);
@@ -247,53 +240,41 @@ function updateLocalUI(){
   else { joinBtn.classList.remove("hidden"); leaveBtn.classList.add("hidden"); joinBtn.disabled = false; }
 
   if(me && me.isModerator) moderatorControls.classList.remove("hidden"); else moderatorControls.classList.add("hidden");
-
   if(!me) impostorNotice.classList.add("hidden");
-
   if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
   showNotification(`Conectados: ${alive.length} jugadores vivos. Total en sala: ${localState.participants.length} / 11.`);
 }
 
-/* ------- Helpers de lobby ------- */
+/* helpers */
 function nextAvailableLetter(){
   const used = localState.participants.map(p=>p.letter).filter(Boolean);
   for(const l of LETTERS) if(!used.includes(l)) return l;
   return null;
 }
-function isLobbyFull(){
-  return localState.participants.length >= 11;
-}
+function isLobbyFull(){ return localState.participants.length >= 11; }
 
-/* ------- Join (mejor con getDocs para evitar race) ------- */
+/* join */
 joinBtn.addEventListener("click", async ()=>{
   setStatus("Solicitando ingreso...");
   try{
-    const roomOk = await ensureRoomExists();
-    if(!roomOk) return;
+    const ok = await ensureRoomExists();
+    if(!ok) return;
+    if(isLobbyFull()){ setStatus("Lobby lleno (1 moderador + 10 jugadores).", true); return; }
 
-    if(isLobbyFull()){
-      setStatus("Lobby lleno (1 moderador + 10 jugadores).", true);
-      return;
-    }
-
-    // leer participantes actuales de forma puntual para decidir roles (evita race)
+    // leer participantes actuales de forma puntual
     const partsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"participants"));
     const parts = [];
     partsSnap.forEach(d => parts.push({ id:d.id, ...d.data() }));
 
     const hasModerator = parts.some(p => p.isModerator);
     const usedLetters = parts.map(p=>p.letter).filter(Boolean);
-
     const partRef = doc(db,"rooms",ROOM_ID,"participants",currentUser.uid);
 
     if(!hasModerator){
-      // ser moderador
       await setDoc(partRef, { uid: currentUser.uid, name: `Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp() });
-      // crear private propio (solo tu puedes escribirlo)
       await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "moderator" });
       setStatus("Ingresado como Moderador.");
     } else {
-      // asignar la próxima letra disponible (A-J)
       let letter = null;
       for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
       if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
@@ -306,7 +287,7 @@ joinBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
 });
 
-/* ------- Leave ------- */
+/* leave */
 leaveBtn.addEventListener("click", async ()=>{
   if(!confirm("¿Seguro que quieres salir?")) return;
   try{
@@ -316,82 +297,72 @@ leaveBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al salir: "+(e?.message || e), true); }
 });
 
-/* ------- Modal de votación ------- */
+/* voting modal */
 function openVoteModalForUser(me){
   const alive = localState.participants.filter(p=>p.alive !== false && p.uid !== currentUser.uid && !p.isModerator);
-  if(alive.length === 0){
-    showNotification("No hay jugadores para votar.");
-    return;
-  }
+  if(alive.length === 0){ showNotification("No hay jugadores para votar."); return; }
   const html = `<div class="modal"><h4>Votar por jugador</h4>${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:150px">${p.name}</button></div>`).join("")}<div style="margin-top:10px"><button id="cancelVoteBtn">Cancelar</button></div></div>`;
   showModal(html);
-
   alive.forEach(p=>{
     const btn = modalRoot.querySelector(`button[data-uid="${p.uid}"]`);
-    if(btn) btn.onclick = async ()=>{
-      try{
-        // cada jugador escribe su propio private/{uid} con su voto (reglas permiten)
-        await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp() });
-        showNotification(`Has votado por ${p.name}`);
-        closeModal();
-      }catch(e){ console.error(e); setStatus("Error al votar: "+(e?.message||e), true); }
-    }
+    if(btn) btn.onclick = async ()=>{ try{
+      await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp() });
+      showNotification(`Has votado por ${p.name}`); closeModal();
+    }catch(e){ console.error(e); setStatus("Error al votar: "+(e?.message||e), true); } };
   });
-
   const cancel = modalRoot.querySelector("#cancelVoteBtn");
   if(cancel) cancel.onclick = ()=> closeModal();
 }
 
-/* ------- Iniciar juego (moderador) ------- */
+/* start game -> Crea evento 'startGame' en rooms/ROOM_ID/events */
 startBtn.addEventListener("click", async ()=>{
   try{
-    // validar sala y rol del que invoca
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar el juego."); return; }
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
     const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
     if(players.length < 2){ alert("Se necesitan al menos 2 jugadores (excluyendo moderador) para comenzar."); return; }
 
-    // elegir impostor aleatoriamente entre players
     const chosen = players[Math.floor(Math.random() * players.length)];
     const impostorUid = chosen.uid;
+    const round = (localState.room?.round || 0) + 1;
 
-    // guardar impostorUid y cambiar fase/round en la sala
-    await updateDoc(roomRef, {
-      phase: "playing",
-      round: (localState.room?.round || 0) + 1,
+    // crear evento en subcollection events
+    await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+      type: "startGame",
       impostorUid,
-      impostorAssignedAt: serverTimestamp()
+      round,
+      createdBy: currentUser.uid,
+      createdAt: serverTimestamp()
     });
 
-    setStatus("Juego iniciado y impostor asignado (guardado en sala).");
+    // intentar actualizar room (mejor esfuerzo). Si falla por permisos, lo ignoramos.
+    try {
+      await updateDoc(doc(db,"rooms",ROOM_ID), { phase: "playing", round });
+    } catch(upErr){
+      console.debug("No se pudo actualizar rooms doc (posible falta de permisos). Continuando con evento.", upErr?.message || upErr);
+    }
+
+    setStatus("Juego iniciado y evento creado (startGame).");
   }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
 });
 
-/* ------- Iniciar votación (moderador) ------- */
+/* start vote -> crea evento 'startVote' */
 startVoteBtn.addEventListener("click", async ()=>{
   try{
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar la votación."); return; }
-
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp(), lastAction: `Moderador inició votación`, lastActionAt: serverTimestamp() });
-
-    setStatus("Votación iniciada por el moderador. Jugadores notificados (por cambio en la sala).");
+    await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+      type: "startVote",
+      createdBy: currentUser.uid,
+      createdAt: serverTimestamp()
+    });
+    try { await updateDoc(doc(db,"rooms",ROOM_ID), { phase: "voting" }); } catch(e){ /* ignore */ }
+    setStatus("Votación iniciada y evento creado (startVote).");
   }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
 });
 
-/* ------- Autenticación anónima y listeners ------- */
-async function tryAnonSignIn(){
-  setStatus("Intentando autenticación anónima...");
-  try{
-    await signInAnonymously(auth);
-  }catch(err){
-    console.error("anon sign-in err", err);
-    setStatus("Error de autenticación anónima: " + (err.message || err.code), true);
-  }
-}
+/* auth */
+async function tryAnonSignIn(){ setStatus("Intentando autenticación anónima..."); try{ await signInAnonymously(auth); }catch(err){ console.error(err); setStatus("Error de autenticación anónima: "+(err?.message||err), true); } }
 
 onAuthStateChanged(auth, async (user)=>{
   if(user){
@@ -402,15 +373,11 @@ onAuthStateChanged(auth, async (user)=>{
       await ensureRoomExists();
       subscribeParticipants();
       subscribeRoom();
+      subscribeEvents(); // escucha events
 
-      // escuchar private/{uid} propio para info privada (no usamos para impostor/prompt)
+      // escuchar private/{uid} propio si quieres usarlo
       const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
-      onSnapshot(privateRef, snap=>{
-        // usamos private solo para guardar/mostrar el lastVote si quieres
-        // por ahora no hacemos nada especial aquí
-      }, err=>{
-        console.debug("private listen:", err?.code || err);
-      });
+      onSnapshot(privateRef, snap=>{}, err=>{ console.debug("private listen:", err?.code||err); });
 
     }catch(e){ console.error(e); setStatus("Error suscribiendo: "+(e.message||e), true); }
   } else {
@@ -418,9 +385,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
 });
 
-/* ------- start initial auth attempt ------- */
 tryAnonSignIn();
-
 </script>
 </body>
 </html>
