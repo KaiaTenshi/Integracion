@@ -34,8 +34,6 @@ ul.participants li{padding:8px 6px;border-bottom:1px dashed rgba(255,255,255,0.0
 
   <div id="status" class="notice">Conectando a Firebase...</div>
 
-  <!-- auth area removed: autenticación será anónima siempre -->
-
   <div class="row">
     <div class="card">
       <h3>Lobby</h3>
@@ -124,6 +122,9 @@ const ROOM_ID = "room_main";
 // players letters A-J (10 players)
 const LETTERS = "ABCDEFGHIJ".split("");
 
+// last room snapshot to detect changes
+let lastRoomSnapshot = null;
+
 /* ------- helpers UI ------- */
 function setStatus(txt, isError=false){
   statusEl.textContent = txt;
@@ -133,16 +134,37 @@ function showNotification(txt){ notificationsEl.innerHTML = `<div class="small">
 function showModal(html){ modalRoot.innerHTML = `<div class="modal-backdrop">${html}</div>`; modalRoot.classList.remove("hidden"); }
 function closeModal(){ modalRoot.innerHTML = ""; modalRoot.classList.add("hidden"); }
 
-/* ------- Firestore helpers ------- */
-async function ensureRoomExists(){
-  const roomRef = doc(db,"rooms",ROOM_ID);
-  const snap = await getDoc(roomRef);
-  if(!snap.exists()) await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp() });
+/* helper to convert timestamp -> ms */
+function tsToMillis(t){
+  if(!t) return null;
+  try { if(typeof t.toMillis === "function") return t.toMillis(); if(t.seconds !== undefined) return t.seconds*1000 + Math.floor((t.nanoseconds||0)/1e6); } catch(e){ return null; }
 }
 
+/* ------- Firestore helpers ------- */
+/**
+ * Si no existe rooms/ROOM_ID, lo crea (ahora asumo que ajustaste reglas).
+ * Devuelve true si existe o fue creado, false si hubo error.
+ */
+async function ensureRoomExists(){
+  const roomRef = doc(db,"rooms",ROOM_ID);
+  try{
+    const snap = await getDoc(roomRef);
+    if(!snap.exists()){
+      // crear con campos iniciales
+      await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp() });
+      setStatus(`Sala "${ROOM_ID}" creada automáticamente.`);
+    }
+    return true;
+  }catch(e){
+    console.error("ensureRoomExists error", e);
+    setStatus("Error al asegurar sala: "+(e?.message||e), true);
+    return false;
+  }
+}
+
+/* ------- render participantes ------- */
 function renderParticipants(list){
   participantsList.innerHTML = "";
-  // sort: moderator first, then by letter
   list.sort((a,b)=>{
     if(a.isModerator && !b.isModerator) return -1;
     if(!a.isModerator && b.isModerator) return 1;
@@ -178,16 +200,46 @@ function subscribeRoom(){
   const roomRef = doc(db,"rooms",ROOM_ID);
   if(unsubRoom) unsubRoom();
   unsubRoom = onSnapshot(roomRef, snap=>{
-    localState.room = snap.exists() ? snap.data() : null;
+    const prev = lastRoomSnapshot;
+    const newRoom = snap.exists() ? snap.data() : null;
+    localState.room = newRoom;
     gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
     updateLocalUI();
+
+    // detectar asignación de impostor
+    try{
+      const prevImpostor = prev?.impostorUid || null;
+      const newImpostor = newRoom?.impostorUid || null;
+      if(newImpostor && newImpostor !== prevImpostor){
+        if(currentUser && newImpostor === currentUser.uid){
+          impostorNotice.classList.remove("hidden");
+        } else {
+          impostorNotice.classList.add("hidden");
+        }
+      }
+    }catch(e){ console.debug(e); }
+
+    // detectar inicio de votación por cambio de timestamp
+    try{
+      const prevVoting = tsToMillis(prev?.votingStartedAt);
+      const newVoting = tsToMillis(newRoom?.votingStartedAt);
+      if(newVoting && newVoting !== prevVoting){
+        const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+        if(me && me.alive !== false && !me.isModerator){
+          // abrir modal para votar
+          openVoteModalForUser(me);
+        }
+      }
+    }catch(e){ console.debug(e); }
+
+    lastRoomSnapshot = newRoom ? { ...newRoom } : null;
   }, err=>{
     console.error("room listen", err);
     setStatus("Error al escuchar sala: "+err.message, true);
   });
 }
 
-/* ------- UI state updates ------- */
+/* ------- UI updates ------- */
 function updateLocalUI(){
   const alive = localState.participants.filter(p=>p.alive !== false);
   const me = localState.participants.find(p=>p.uid === currentUser?.uid);
@@ -196,55 +248,65 @@ function updateLocalUI(){
 
   if(me && me.isModerator) moderatorControls.classList.remove("hidden"); else moderatorControls.classList.add("hidden");
 
-  // private doc listener set up below in auth handler; this toggles impostor notice in case private doc exists
   if(!me) impostorNotice.classList.add("hidden");
 
   if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
   showNotification(`Conectados: ${alive.length} jugadores vivos. Total en sala: ${localState.participants.length} / 11.`);
 }
 
-/* ------- Utility: next letter & capacity ------- */
+/* ------- Helpers de lobby ------- */
 function nextAvailableLetter(){
   const used = localState.participants.map(p=>p.letter).filter(Boolean);
   for(const l of LETTERS) if(!used.includes(l)) return l;
   return null;
 }
 function isLobbyFull(){
-  // max 1 moderator + 10 players = 11 total
   return localState.participants.length >= 11;
 }
-function hasModerator(){
-  return localState.participants.some(p => p.isModerator);
-}
 
-/* ------- Actions: join / leave ------- */
+/* ------- Join (mejor con getDocs para evitar race) ------- */
 joinBtn.addEventListener("click", async ()=>{
   setStatus("Solicitando ingreso...");
   try{
-    await ensureRoomExists();
+    const roomOk = await ensureRoomExists();
+    if(!roomOk) return;
+
     if(isLobbyFull()){
       setStatus("Lobby lleno (1 moderador + 10 jugadores).", true);
       return;
     }
+
+    // leer participantes actuales de forma puntual para decidir roles (evita race)
+    const partsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"participants"));
+    const parts = [];
+    partsSnap.forEach(d => parts.push({ id:d.id, ...d.data() }));
+
+    const hasModerator = parts.some(p => p.isModerator);
+    const usedLetters = parts.map(p=>p.letter).filter(Boolean);
+
     const partRef = doc(db,"rooms",ROOM_ID,"participants",currentUser.uid);
 
-    // if no moderator exists, this join becomes moderator
-    const willBeModerator = !hasModerator();
-    if(willBeModerator){
-      await setDoc(partRef, { uid: currentUser.uid, name:`Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp() });
-      // private doc for moderator
-      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role:"moderator" });
+    if(!hasModerator){
+      // ser moderador
+      await setDoc(partRef, { uid: currentUser.uid, name: `Moderador`, letter: null, isModerator: true, alive: true, joinedAt: serverTimestamp() });
+      // crear private propio (solo tu puedes escribirlo)
+      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "moderator" });
       setStatus("Ingresado como Moderador.");
     } else {
-      const letter = nextAvailableLetter();
+      // asignar la próxima letra disponible (A-J)
+      let letter = null;
+      for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
       if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
-      await setDoc(partRef, { uid: currentUser.uid, name:`Invitado ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp() });
-      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role:"player", lastVoteFor:null, lastVoteAt:null });
+
+      await setDoc(partRef, { uid: currentUser.uid, name: `Invitado ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp() });
+      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null });
       setStatus(`Ingresado como Jugador ${letter}.`);
     }
+
   }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
 });
 
+/* ------- Leave ------- */
 leaveBtn.addEventListener("click", async ()=>{
   if(!confirm("¿Seguro que quieres salir?")) return;
   try{
@@ -254,7 +316,7 @@ leaveBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al salir: "+(e?.message || e), true); }
 });
 
-/* ------- Voting modal helper (reused) ------- */
+/* ------- Modal de votación ------- */
 function openVoteModalForUser(me){
   const alive = localState.participants.filter(p=>p.alive !== false && p.uid !== currentUser.uid && !p.isModerator);
   if(alive.length === 0){
@@ -263,120 +325,96 @@ function openVoteModalForUser(me){
   }
   const html = `<div class="modal"><h4>Votar por jugador</h4>${alive.map(p=>`<div style="margin:6px"><button data-uid="${p.uid}" style="min-width:150px">${p.name}</button></div>`).join("")}<div style="margin-top:10px"><button id="cancelVoteBtn">Cancelar</button></div></div>`;
   showModal(html);
+
   alive.forEach(p=>{
     const btn = modalRoot.querySelector(`button[data-uid="${p.uid}"]`);
     if(btn) btn.onclick = async ()=>{
       try{
-        await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp(), promptToVote: false });
+        // cada jugador escribe su propio private/{uid} con su voto (reglas permiten)
+        await updateDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { lastVoteFor: p.uid, lastVoteAt: serverTimestamp() });
         showNotification(`Has votado por ${p.name}`);
         closeModal();
       }catch(e){ console.error(e); setStatus("Error al votar: "+(e?.message||e), true); }
     }
   });
+
   const cancel = modalRoot.querySelector("#cancelVoteBtn");
   if(cancel) cancel.onclick = ()=> closeModal();
 }
 
-/* ------- Start juego (moderador) ------- */
+/* ------- Iniciar juego (moderador) ------- */
 startBtn.addEventListener("click", async ()=>{
   try{
+    // validar sala y rol del que invoca
+    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+    if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar el juego."); return; }
+
     const roomRef = doc(db,"rooms",ROOM_ID);
     const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
     if(players.length < 2){ alert("Se necesitan al menos 2 jugadores (excluyendo moderador) para comenzar."); return; }
-    // choose impostor at random among players (exclude moderator)
-    const impostorIdx = Math.floor(Math.random()*players.length);
-    for(let i=0;i<players.length;i++){
-      const p = players[i];
-      const role = (i===impostorIdx) ? "impostor" : "player";
-      await setDoc(doc(db,"rooms",ROOM_ID,"private", p.uid), { role }, { merge: true });
-    }
-    // set moderator private role explicitly
-    const mod = localState.participants.find(p=>p.isModerator);
-    if(mod) await setDoc(doc(db,"rooms",ROOM_ID,"private",mod.uid), { role: "moderator" }, { merge: true });
 
-    await updateDoc(roomRef, { phase: "playing", round: (localState.room?.round || 0) + 1 });
-    setStatus("Juego iniciado.");
+    // elegir impostor aleatoriamente entre players
+    const chosen = players[Math.floor(Math.random() * players.length)];
+    const impostorUid = chosen.uid;
+
+    // guardar impostorUid y cambiar fase/round en la sala
+    await updateDoc(roomRef, {
+      phase: "playing",
+      round: (localState.room?.round || 0) + 1,
+      impostorUid,
+      impostorAssignedAt: serverTimestamp()
+    });
+
+    setStatus("Juego iniciado y impostor asignado (guardado en sala).");
   }catch(e){ console.error(e); setStatus("Error al iniciar: "+(e?.message || e), true); }
 });
 
-/* ------- Moderador: iniciar votación (notifica a jugadores) ------- */
+/* ------- Iniciar votación (moderador) ------- */
 startVoteBtn.addEventListener("click", async ()=>{
   try{
+    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+    if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar la votación."); return; }
+
     const roomRef = doc(db,"rooms",ROOM_ID);
-    // set room to voting phase
-    await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp() });
+    await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp(), lastAction: `Moderador inició votación`, lastActionAt: serverTimestamp() });
 
-    // notify each alive player (except moderator) by setting promptToVote:true in their private doc
-    const players = localState.participants.filter(p=>p.alive !== false && !p.isModerator);
-    const promises = players.map(p=> updateDoc(doc(db,"rooms",ROOM_ID,"private",p.uid), { promptToVote: true }) );
-    // if any private doc doesn't exist, set it
-    // to be safe, handle missing docs by trying setDoc on failure (best-effort)
-    try {
-      await Promise.all(promises);
-    } catch(err) {
-      // best effort: for players that may not have private doc, create/merge
-      for(const p of players){
-        try{
-          await setDoc(doc(db,"rooms",ROOM_ID,"private",p.uid), { promptToVote: true }, { merge: true });
-        }catch(e){ console.warn("no se pudo escribir private para", p.uid, e); }
-      }
-    }
-
-    // also show room-level notification
-    setStatus("Votación iniciada por el moderador. Se ha notificado a los jugadores.");
-    await updateDoc(roomRef, { lastAction: `Moderador inició votación`, lastActionAt: serverTimestamp() });
+    setStatus("Votación iniciada por el moderador. Jugadores notificados (por cambio en la sala).");
   }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
 });
 
-/* ------- AUTH flows (ANÓNIMO ÚNICAMENTE) ------- */
+/* ------- Autenticación anónima y listeners ------- */
 async function tryAnonSignIn(){
   setStatus("Intentando autenticación anónima...");
   try{
     await signInAnonymously(auth);
-    // success handled by onAuthStateChanged
   }catch(err){
     console.error("anon sign-in err", err);
     setStatus("Error de autenticación anónima: " + (err.message || err.code), true);
   }
 }
 
-/* ------- onAuth state ------- */
 onAuthStateChanged(auth, async (user)=>{
   if(user){
     currentUser = user;
     setStatus("Conectado (anónimo). UID: " + user.uid);
-    // habilitar botones principales
     joinBtn.disabled = false;
     try{
       await ensureRoomExists();
       subscribeParticipants();
       subscribeRoom();
 
-      // set up listener for private doc to catch impostor & promptToVote
+      // escuchar private/{uid} propio para info privada (no usamos para impostor/prompt)
       const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
       onSnapshot(privateRef, snap=>{
-        const data = snap.exists() ? snap.data() : {};
-        // Impostor notice
-        const me = localState.participants.find(p=>p.uid === user.uid);
-        if(data.role === "impostor" && me?.alive !== false) impostorNotice.classList.remove("hidden");
-        else impostorNotice.classList.add("hidden");
-
-        // Prompt to vote: open modal automatically (only for players vivos, no moderador)
-        if(data.promptToVote && me && me.alive !== false && !me.isModerator){
-          // open modal for voting
-          openVoteModalForUser(me);
-          // clear promptToVote so it doesn't re-open repeatedly
-          updateDoc(privateRef, { promptToVote: false }).catch(e=>console.warn("clear promptToVote failed", e));
-        }
+        // usamos private solo para guardar/mostrar el lastVote si quieres
+        // por ahora no hacemos nada especial aquí
       }, err=>{
-        // ignore read errors gracefully (rules may block)
         console.debug("private listen:", err?.code || err);
       });
 
     }catch(e){ console.error(e); setStatus("Error suscribiendo: "+(e.message||e), true); }
   } else {
     setStatus("No autenticado (intento de anónimo automático).", true);
-    // intentar anónimo por defecto
   }
 });
 
