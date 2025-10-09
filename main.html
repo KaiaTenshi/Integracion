@@ -29,12 +29,13 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 .ctrls{display:flex;gap:6px}
 .level-num{min-width:34px;text-align:center}
 .mono{font-family:monospace}
+.hidden{display:none!important}
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Rival Más Débil</h1>
-  <p class="lead">Sube niveles respondiendo bien. El moderador lidera las preguntas y controla niveles. Torre = 50 niveles.</p>
+  <p class="lead">Sube niveles respondiendo bien. El moderador lidera las preguntas y controla niveles. Torre = 10 niveles.</p>
 
   <div id="status" class="notice">Conectando a Firebase...</div>
 
@@ -75,7 +76,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
     </div>
   </div>
 
-  <footer style="margin-top:14px" class="small">La primera persona en entrar será el <strong>Moderador</strong>. Torre: 50 niveles.</footer>
+  <footer style="margin-top:14px" class="small">La primera persona en entrar será el <strong>Moderador</strong>. Torre: 10 niveles.</footer>
 </div>
 
 <div id="modalRoot" class="hidden"></div>
@@ -124,7 +125,7 @@ let unsubParts = null, unsubRoom = null, unsubEvents = null;
 let localState = { participants: [], room: null };
 const ROOM_ID = "room_main";
 const LETTERS = "ABCDEFGHIJ".split("");
-const MAX_LEVEL = 50;
+const MAX_LEVEL = 10; // Cambiado de 50 a 10 niveles
 let processedEventIds = new Set();
 
 /* ------- UI helpers ------- */
@@ -302,7 +303,7 @@ function handleEvent(ev, id){
   if(ev.type === "startGame"){
     setStatus("Evento: Juego iniciado.");
     // if impostorUid equals current user -> show special notice
-    if(currentUser && ev.impostorUid === currentUser.uid){
+    if(currentUser && ev.rivalUid === currentUser.uid){
       impostorNotice.classList.remove("hidden");
       document.getElementById("youAre").textContent = "¡Eres el rival más débil!";
     } else {
@@ -339,6 +340,17 @@ function handleEvent(ev, id){
     localState.room.levels = {};
     localState.participants.forEach(p=> p.level = 0);
     renderParticipants(localState.participants);
+  } else if(ev.type === "votingEnded") {
+    // Mostrar resultados de la votación y eliminar al jugador más votado
+    setStatus("Votación terminada. Resultados:");
+    showNotification(`El rival más débil es: ${ev.weakestPlayerName}. Ha sido eliminado del juego.`);
+    
+    // Actualizar estado local para marcar al jugador como eliminado
+    const weakestPlayer = localState.participants.find(p => p.uid === ev.weakestPlayerUid);
+    if (weakestPlayer) {
+      weakestPlayer.alive = false;
+      renderParticipants(localState.participants);
+    }
   }
 }
 
@@ -348,7 +360,14 @@ function updateLocalUI(){
   const me = localState.participants.find(p=>p.uid === currentUser?.uid);
   if(me){ joinBtn.classList.add("hidden"); leaveBtn.classList.remove("hidden"); joinBtn.disabled = false; }
   else { joinBtn.classList.remove("hidden"); leaveBtn.classList.add("hidden"); joinBtn.disabled = false; }
-  if(me && me.isModerator) moderatorControls.classList.remove("hidden"); else moderatorControls.classList.add("hidden");
+  
+  // Solo mostrar controles de moderador si el usuario actual es moderador
+  if(me && me.isModerator) {
+    moderatorControls.classList.remove("hidden");
+  } else {
+    moderatorControls.classList.add("hidden");
+  }
+  
   if(!me) impostorNotice.classList.add("hidden");
   if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
   showNotification(`Conectados: ${alive.length} jugadores vivos. Total: ${localState.participants.length} / 11.`);
@@ -516,6 +535,71 @@ startVoteBtn.addEventListener("click", async ()=>{
   }catch(e){ console.error(e); setStatus("Error al iniciar votación: "+(e?.message || e), true); }
 });
 
+/* ------- Finalizar votación y eliminar al jugador más débil (moderador) ------- */
+async function endVotingAndEliminateWeakest() {
+  try {
+    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
+    if(!me || !me.isModerator){ alert("Solo el moderador puede finalizar la votación."); return; }
+
+    // Obtener todos los votos
+    const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
+    const votes = [];
+    votesSnap.forEach(doc => votes.push(doc.data()));
+    
+    // Contar votos por jugador
+    const voteCount = {};
+    votes.forEach(vote => {
+      voteCount[vote.targetUid] = (voteCount[vote.targetUid] || 0) + 1;
+    });
+    
+    // Encontrar al jugador más votado
+    let maxVotes = 0;
+    let weakestPlayerUid = null;
+    let weakestPlayerName = null;
+    
+    for (const [uid, count] of Object.entries(voteCount)) {
+      if (count > maxVotes) {
+        maxVotes = count;
+        weakestPlayerUid = uid;
+        const player = localState.participants.find(p => p.uid === uid);
+        weakestPlayerName = player ? player.name : "Desconocido";
+      }
+    }
+    
+    if (weakestPlayerUid) {
+      // Marcar al jugador como eliminado
+      await updateDoc(doc(db,"rooms",ROOM_ID,"participants",weakestPlayerUid), { alive: false });
+      
+      // Crear evento para anunciar el resultado
+      await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
+        type: "votingEnded", 
+        weakestPlayerUid, 
+        weakestPlayerName,
+        voteCount: maxVotes,
+        createdBy: currentUser.uid, 
+        createdAt: serverTimestamp()
+      });
+      
+      // Cambiar fase de vuelta a playing
+      const roomRef = doc(db,"rooms",ROOM_ID);
+      await updateDoc(roomRef, { phase: "playing" });
+      
+      setStatus(`Votación finalizada. ${weakestPlayerName} ha sido eliminado.`);
+    } else {
+      setStatus("No se pudo determinar el rival más débil.");
+    }
+    
+    // Limpiar votos para la próxima ronda
+    try {
+      for(const v of votesSnap.docs) await deleteDoc(v.ref);
+    } catch(e){ console.debug("no se pudieron borrar votes", e); }
+    
+  } catch(e) {
+    console.error(e);
+    setStatus("Error al finalizar votación: "+(e?.message || e), true);
+  }
+}
+
 /* ------- Reiniciar juego (moderador) ------- */
 resetBtn.addEventListener("click", async ()=>{
   if(!confirm("¿Seguro que quieres reiniciar el juego? Esto reseteará niveles y fase a 'lobby'.")) return;
@@ -535,13 +619,18 @@ resetBtn.addEventListener("click", async ()=>{
       setStatus("Juego reiniciado (evento creado).");
     }
 
-    // optionally clear votes subcollection (moderator can delete them if rules permit; here we attempt but ignore errors)
+    // Resetear estado de todos los jugadores a vivo
+    const players = localState.participants.filter(p => !p.isModerator);
+    for (const player of players) {
+      await updateDoc(doc(db,"rooms",ROOM_ID,"participants",player.uid), { alive: true });
+    }
+
+    // Limpiar votos
     try{
       const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
       for(const v of votesSnap.docs) await deleteDoc(v.ref);
     }catch(e){ console.debug("no se pudieron borrar votes (posible permiso).", e); }
 
-    // clear private votes for all participants? not possible from client securely; each user keeps their private doc.
   }catch(e){ console.error(e); setStatus("Error al reiniciar: "+(e?.message || e), true); }
 });
 
@@ -591,6 +680,16 @@ onAuthStateChanged(auth, async (user)=>{
 
 /* ------- start auth ------- */
 tryAnonSignIn();
+
+// Añadir botón para finalizar votación (solo visible para moderador)
+document.addEventListener('DOMContentLoaded', () => {
+  const endVoteBtn = document.createElement('button');
+  endVoteBtn.textContent = 'Finalizar Votación';
+  endVoteBtn.className = 'ghost';
+  endVoteBtn.id = 'endVoteBtn';
+  endVoteBtn.addEventListener('click', endVotingAndEliminateWeakest);
+  moderatorControls.appendChild(endVoteBtn);
+});
 
 </script>
 </body>
