@@ -326,17 +326,7 @@ function updateGroupProgress() {
   
   groupProgressBar.style.width = `${progressPercent}%`;
   groupProgressText.textContent = `${groupLevel} / ${MAX_GROUP_LEVEL}`;
-  
-  // MOSTRAR LA BARRA DE PROGRESO PARA TODOS LOS USUARIOS SIEMPRE QUE HAYA UN JUEGO ACTIVO
-  const shouldShowProgress = localState.room && 
-                           localState.room.phase !== "lobby" && 
-                           localState.room.phase !== "ended";
-  
-  if (shouldShowProgress) {
-    groupProgressContainer.classList.remove("hidden");
-  } else {
-    groupProgressContainer.classList.add("hidden");
-  }
+  groupProgressContainer.classList.remove("hidden");
 }
 
 /* ------- Mostrar ventana de votación ------- */
@@ -639,7 +629,6 @@ function updateLocalUI(){
     joinBtn.disabled = false; 
   }
   
-  // SOLO LOS CONTROLES DEBERÍAN ESTAR OCULTOS PARA NO MODERADORES, NO LA BARRA DE PROGRESO
   if(me && me.isModerator) {
     moderatorControls.classList.remove("hidden");
     groupProgressControls.classList.remove("hidden");
