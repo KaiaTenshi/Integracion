@@ -54,6 +54,10 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 .vote-modal .participant-item:hover{background:rgba(255,255,255,0.05)}
 .vote-modal .participant-item.selected{background:rgba(125,211,252,0.1)}
 .vote-modal .vote-confirm{width:100%;margin-top:12px}
+
+/* Estilos para el aviso de eliminación */
+.eliminated-notice{background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3);padding:10px;border-radius:8px;margin-top:12px}
+.eliminated-notice strong{color:#ff7b7b}
 </style>
 </head>
 <body>
@@ -94,6 +98,12 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
       <div id="impostorNotice" class="hidden" style="margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
         <strong id="youAre">¡Eres el rival más débil!</strong>
         <p class="small">Si te asignó el moderador, tendrás ventaja de prueba — pero el objetivo es mejorar tu nivel.</p>
+      </div>
+
+      <!-- Aviso de eliminación -->
+      <div id="eliminatedNotice" class="hidden eliminated-notice">
+        <strong>¡Fuiste eliminado en esta ronda!</strong>
+        <p class="small">Espera a que el moderador cierre el juego para volver a participar.</p>
       </div>
 
       <div id="results" style="margin-top:12px"></div>
@@ -159,6 +169,7 @@ const closeGameBtn = document.getElementById("closeGameBtn");
 const gamePhaseEl = document.getElementById("gamePhase");
 const notificationsEl = document.getElementById("notifications");
 const impostorNotice = document.getElementById("impostorNotice");
+const eliminatedNotice = document.getElementById("eliminatedNotice");
 const resultsEl = document.getElementById("results");
 const modalRoot = document.getElementById("modalRoot");
 const groupProgressContainer = document.getElementById("groupProgressContainer");
@@ -526,6 +537,7 @@ function handleEvent(ev, id){
   } else if(ev.type === "gameClosed"){
     setStatus("Evento: Juego cerrado por moderador.");
     impostorNotice.classList.add("hidden");
+    eliminatedNotice.classList.add("hidden");
     localState.room = localState.room || {};
     localState.room.phase = "lobby";
     localState.room.round = 0;
@@ -545,6 +557,12 @@ function handleEvent(ev, id){
       weakestPlayer.alive = false;
       renderParticipants(localState.participants);
       updateGroupProgress();
+      
+      // Mostrar aviso al usuario eliminado
+      if (currentUser && currentUser.uid === ev.weakestPlayerUid) {
+        eliminatedNotice.classList.remove("hidden");
+        setStatus("¡Fuiste eliminado en esta ronda! Espera a que el moderador cierre el juego para volver a participar.");
+      }
     }
     
     if (voteCheckInterval) {
@@ -560,8 +578,24 @@ function handleEvent(ev, id){
 function updateLocalUI(){
   const alive = localState.participants.filter(p=>p.alive !== false);
   const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-  if(me){ joinBtn.classList.add("hidden"); leaveBtn.classList.remove("hidden"); joinBtn.disabled = false; }
-  else { joinBtn.classList.remove("hidden"); leaveBtn.classList.add("hidden"); joinBtn.disabled = false; }
+  
+  if(me){ 
+    joinBtn.classList.add("hidden"); 
+    leaveBtn.classList.remove("hidden"); 
+    joinBtn.disabled = false; 
+    
+    // Verificar si el usuario actual fue eliminado
+    if (me.alive === false) {
+      eliminatedNotice.classList.remove("hidden");
+      setStatus("¡Fuiste eliminado en esta ronda! Espera a que el moderador cierre el juego para volver a participar.");
+    } else {
+      eliminatedNotice.classList.add("hidden");
+    }
+  } else { 
+    joinBtn.classList.remove("hidden"); 
+    leaveBtn.classList.add("hidden"); 
+    joinBtn.disabled = false; 
+  }
   
   if(me && me.isModerator) {
     moderatorControls.classList.remove("hidden");
@@ -571,8 +605,14 @@ function updateLocalUI(){
     groupProgressControls.classList.add("hidden");
   }
   
-  if(!me) impostorNotice.classList.add("hidden");
-  if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; else resultsEl.innerHTML = "";
+  if(!me) {
+    impostorNotice.classList.add("hidden");
+    eliminatedNotice.classList.add("hidden");
+  }
+  
+  if(localState.room?.phase === "ended") resultsEl.innerHTML = `<div class="small"><strong>Juego terminado.</strong></div>`; 
+  else resultsEl.innerHTML = "";
+  
   showNotification(`Conectados: ${alive.length} jugadores vivos. Total: ${localState.participants.length} / 11.`);
 }
 
@@ -716,9 +756,6 @@ startVoteBtn.addEventListener("click", async ()=>{
 /* ------- Finalizar votación automáticamente ------- */
 async function endVotingAndEliminateWeakest() {
   try {
-    const me = localState.participants.find(p=>p.uid === currentUser?.uid);
-    // Esta función ahora se ejecuta automáticamente, no necesita verificar si es moderador
-
     const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
     const votes = [];
     votesSnap.forEach(doc => votes.push(doc.data()));
