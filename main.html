@@ -339,11 +339,13 @@ function showVoteModal() {
     return;
   }
 
-  // Verificar si ya votó
+  // Verificar si ya votó en ESTA ronda
   getDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid)).then(snap => {
     const data = snap.exists() ? snap.data() : {};
-    if (data?.lastVoteAt) {
-      // Ya votó, no mostrar ventana
+    const currentRound = localState.room?.round || 0;
+    
+    // Si ya votó en esta ronda, no mostrar ventana
+    if (data.lastVoteRound === currentRound && data.lastVoteAt) {
       return;
     }
 
@@ -359,7 +361,7 @@ function showVoteModal() {
     let selectedPlayer = null;
     
     const html = `<div class="modal vote-modal">
-      <h3>Votación Activa</h3>
+      <h3>Votación Activa - Ronda ${currentRound}</h3>
       <p class="small">Elige al rival más débil:</p>
       <div class="participant-list">
         ${alivePlayers.map(player => `
@@ -402,18 +404,21 @@ function showVoteModal() {
         // Registrar voto
         await addDoc(collection(db, "rooms", ROOM_ID, "votes"), { 
           targetUid: selectedPlayer, 
-          createdAt: serverTimestamp() 
+          createdAt: serverTimestamp(),
+          round: localState.room?.round || 0
         });
         
-        // Marcar como votado en documento privado
+        // Marcar como votado en documento privado (incluyendo la ronda actual)
+        const currentRound = localState.room?.round || 0;
         await updateDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid), { 
           lastVoteFor: selectedPlayer, 
-          lastVoteAt: serverTimestamp() 
+          lastVoteAt: serverTimestamp(),
+          lastVoteRound: currentRound
         });
         
         const playerName = alivePlayers.find(p => p.uid === selectedPlayer)?.customName || 
                           alivePlayers.find(p => p.uid === selectedPlayer)?.name;
-        setStatus(`Has votado por ${playerName}`);
+        setStatus(`Has votado por ${playerName} en la ronda ${currentRound}`);
         closeModal();
         
         // Verificar si todos han votado
@@ -530,12 +535,14 @@ async function checkAllVoted() {
       p.alive !== false && !p.isModerator
     );
     
-    // Contar votantes únicos consultando documentos privados
+    const currentRound = localState.room?.round || 0;
+    
+    // Contar votantes únicos consultando documentos privados (solo de esta ronda)
     const voters = new Set();
     const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
     privateDocs.forEach(docSnap => {
       const data = docSnap.data();
-      if (data.lastVoteAt && data.role === 'player') {
+      if (data.lastVoteAt && data.lastVoteRound === currentRound && data.role === 'player') {
         voters.add(docSnap.id);
       }
     });
@@ -689,7 +696,7 @@ joinBtn.addEventListener("click", async ()=>{
       for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
       if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
       await setDoc(partRef, { uid: currentUser.uid, name: `Jugador ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp(), level: 0 });
-      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null });
+      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null, lastVoteRound: -1 });
       setStatus(`Ingresado como Jugador ${letter}.`);
     }
   }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
@@ -779,14 +786,23 @@ startVoteBtn.addEventListener("click", async ()=>{
     if(!me || !me.isModerator){ alert("Solo el moderador puede iniciar la votación."); return; }
 
     const roomRef = doc(db,"rooms",ROOM_ID);
+    const currentRound = (localState.room?.round || 0) + 1;
+    
     try{
-      await updateDoc(roomRef, { phase: "voting", votingStartedAt: serverTimestamp() });
-      setStatus("Votación iniciada.");
+      await updateDoc(roomRef, { 
+        phase: "voting", 
+        round: currentRound,
+        votingStartedAt: serverTimestamp() 
+      });
+      setStatus(`Votación iniciada - Ronda ${currentRound}`);
     }catch(upErr){
       await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
-        type: "startVote", createdBy: currentUser.uid, createdAt: serverTimestamp()
+        type: "startVote", 
+        round: currentRound,
+        createdBy: currentUser.uid, 
+        createdAt: serverTimestamp()
       });
-      setStatus("Votación iniciada (evento creado).");
+      setStatus(`Votación iniciada (evento creado) - Ronda ${currentRound}`);
     }
 
     if (voteCheckInterval) clearInterval(voteCheckInterval);
@@ -798,9 +814,17 @@ startVoteBtn.addEventListener("click", async ()=>{
 /* ------- Finalizar votación automáticamente ------- */
 async function endVotingAndEliminateWeakest() {
   try {
+    const currentRound = localState.room?.round || 0;
+    
+    // Obtener solo los votos de la ronda actual
     const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
     const votes = [];
-    votesSnap.forEach(doc => votes.push(doc.data()));
+    votesSnap.forEach(doc => {
+      const voteData = doc.data();
+      if (voteData.round === currentRound) {
+        votes.push(voteData);
+      }
+    });
     
     const voteCount = {};
     votes.forEach(vote => {
@@ -828,6 +852,7 @@ async function endVotingAndEliminateWeakest() {
         weakestPlayerUid, 
         weakestPlayerName,
         voteCount: maxVotes,
+        round: currentRound,
         createdBy: currentUser.uid, 
         createdAt: serverTimestamp()
       });
@@ -835,13 +860,19 @@ async function endVotingAndEliminateWeakest() {
       const roomRef = doc(db,"rooms",ROOM_ID);
       await updateDoc(roomRef, { phase: "playing" });
       
-      setStatus(`Votación finalizada. ${weakestPlayerName} ha sido eliminado.`);
+      setStatus(`Votación finalizada - Ronda ${currentRound}. ${weakestPlayerName} ha sido eliminado.`);
     } else {
       setStatus("No se pudo determinar el rival más débil.");
     }
     
+    // Limpiar solo los votos de esta ronda
     try {
-      for(const v of votesSnap.docs) await deleteDoc(v.ref);
+      for(const v of votesSnap.docs) {
+        const voteData = v.data();
+        if (voteData.round === currentRound) {
+          await deleteDoc(v.ref);
+        }
+      }
     } catch(e){ console.debug("no se pudieron borrar votes", e); }
     
     if (voteCheckInterval) {
