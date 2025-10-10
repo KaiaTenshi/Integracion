@@ -201,6 +201,7 @@ const LETTERS = "ABCDEFGHIJ".split("");
 let MAX_GROUP_LEVEL = 30; // Ahora es variable
 let processedEventIds = new Set();
 let voteCheckInterval = null;
+let lastVotingPhase = false; // Para rastrear el estado anterior de la fase de votación
 
 /* ------- UI helpers ------- */
 function setStatus(txt, isError=false){ statusEl.textContent = txt; statusEl.style.color = isError ? "#ff7b7b" : ""; }
@@ -437,11 +438,6 @@ function subscribeParticipants(){
     localState.participants = parts;
     renderParticipants(parts);
     updateLocalUI();
-    
-    // Actualizar ventana de votación si estamos en fase de votación
-    if (localState.room?.phase === 'voting') {
-      showVoteModal();
-    }
   }, err=>{
     console.error("participants listen", err);
     setStatus("Error al escuchar participantes: "+err.message, true);
@@ -452,6 +448,7 @@ function subscribeRoom(){
   const roomRef = doc(db,"rooms",ROOM_ID);
   if(unsubRoom) unsubRoom();
   unsubRoom = onSnapshot(roomRef, snap=>{
+    const oldRoom = localState.room;
     localState.room = snap.exists() ? snap.data() : null;
     gamePhaseEl.textContent = `Fase: ${localState.room?.phase || "-"} | Ronda: ${localState.room?.round || 0}`;
     
@@ -464,16 +461,24 @@ function subscribeRoom(){
     updateGroupProgress();
     updateLocalUI();
 
-    // Manejar cambios de fase
-    if (localState.room?.phase === 'voting') {
+    // Detectar cambio a fase de votación
+    const isNowVoting = localState.room?.phase === 'voting';
+    const wasVoting = oldRoom?.phase === 'voting';
+    
+    if (isNowVoting && !wasVoting) {
+      // Acabamos de entrar en fase de votación
+      console.log("Cambio a fase de votación detectado");
+      
       // Iniciar verificación periódica de votos
       if (voteCheckInterval) clearInterval(voteCheckInterval);
       voteCheckInterval = setInterval(checkAllVoted, 3000);
       
-      // Mostrar ventana de votación
-      showVoteModal();
-    } else {
-      // Limpiar intervalo si existe
+      // Mostrar ventana de votación después de un pequeño delay para asegurar que los datos estén cargados
+      setTimeout(() => {
+        showVoteModal();
+      }, 500);
+    } else if (!isNowVoting && wasVoting) {
+      // Salimos de la fase de votación
       if (voteCheckInterval) {
         clearInterval(voteCheckInterval);
         voteCheckInterval = null;
@@ -561,6 +566,11 @@ function handleEvent(ev, id){
     setStatus("Evento: Votación iniciada.");
     if (voteCheckInterval) clearInterval(voteCheckInterval);
     voteCheckInterval = setInterval(checkAllVoted, 3000);
+    
+    // Mostrar ventana de votación cuando se recibe el evento de inicio de votación
+    setTimeout(() => {
+      showVoteModal();
+    }, 500);
   } else if(ev.type === "gameClosed"){
     setStatus("Evento: Juego cerrado por moderador.");
     impostorNotice.classList.add("hidden");
