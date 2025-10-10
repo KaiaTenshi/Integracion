@@ -62,6 +62,14 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 /* Estilos para el control de nivel máximo */
 .max-level-controls{display:flex;align-items:center;gap:8px;margin-top:8px}
 .max-level-controls input{width:60px;padding:4px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:white;text-align:center}
+
+/* Estilos para el panel de votación del moderador */
+.vote-status-panel{background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;margin-top:12px}
+.vote-status-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+.vote-status-item:last-child{border-bottom:none}
+.vote-status-badge{padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.vote-status-badge.voted{background:rgba(34,197,94,0.2);color:#4ade80}
+.vote-status-badge.pending{background:rgba(251,191,36,0.2);color:#fbbf24}
 </style>
 </head>
 <body>
@@ -98,6 +106,12 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
       <p id="gamePhase" class="small">-</p>
 
       <div id="notifications" style="margin-top:12px"></div>
+
+      <!-- Panel de estado de votación (solo para moderador) -->
+      <div id="voteStatusPanel" class="vote-status-panel hidden">
+        <h4>Estado de Votación</h4>
+        <div id="voteStatusList"></div>
+      </div>
 
       <div id="impostorNotice" class="hidden" style="margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
         <strong id="youAre">¡Eres el rival más débil!</strong>
@@ -192,16 +206,18 @@ const addGroupPointBtn = document.getElementById("addGroupPointBtn");
 const removeGroupPointBtn = document.getElementById("removeGroupPointBtn");
 const maxLevelInput = document.getElementById("maxLevelInput");
 const setMaxLevelBtn = document.getElementById("setMaxLevelBtn");
+const voteStatusPanel = document.getElementById("voteStatusPanel");
+const voteStatusList = document.getElementById("voteStatusList");
 
 let currentUser = null;
-let unsubParts = null, unsubRoom = null, unsubEvents = null, unsubVotes = null;
+let unsubParts = null, unsubRoom = null, unsubEvents = null, unsubVotes = null, unsubPrivate = null;
 let localState = { participants: [], room: null };
 const ROOM_ID = "room_main";
 const LETTERS = "ABCDEFGHIJ".split("");
-let MAX_GROUP_LEVEL = 30; // Ahora es variable
+let MAX_GROUP_LEVEL = 30;
 let processedEventIds = new Set();
 let voteCheckInterval = null;
-let lastVotingPhase = false; // Para rastrear el estado anterior de la fase de votación
+let currentVotingRound = 0;
 
 /* ------- UI helpers ------- */
 function setStatus(txt, isError=false){ statusEl.textContent = txt; statusEl.style.color = isError ? "#ff7b7b" : ""; }
@@ -218,7 +234,6 @@ async function ensureRoomExists(){
       await setDoc(roomRef, { phase:"lobby", round:0, createdAt: serverTimestamp(), groupLevel: 0, maxGroupLevel: MAX_GROUP_LEVEL });
       setStatus(`Sala "${ROOM_ID}" creada automáticamente.`);
     } else {
-      // Actualizar MAX_GROUP_LEVEL con el valor guardado en Firestore
       const data = snap.data();
       if (data.maxGroupLevel) {
         MAX_GROUP_LEVEL = data.maxGroupLevel;
@@ -282,6 +297,51 @@ function renderParticipants(list){
   });
 }
 
+/* ------- Actualizar panel de estado de votación ------- */
+async function updateVoteStatusPanel() {
+  const me = localState.participants.find(p => p.uid === currentUser?.uid);
+  if (!me || !me.isModerator || localState.room?.phase !== 'voting') {
+    voteStatusPanel.classList.add("hidden");
+    return;
+  }
+
+  voteStatusPanel.classList.remove("hidden");
+  
+  const alivePlayers = localState.participants.filter(p => 
+    p.alive !== false && !p.isModerator
+  );
+
+  // Obtener estado de votación de todos los jugadores
+  const voteStatusItems = [];
+  
+  for (const player of alivePlayers) {
+    try {
+      const privateDoc = await getDoc(doc(db, "rooms", ROOM_ID, "private", player.uid));
+      const data = privateDoc.exists() ? privateDoc.data() : {};
+      const hasVoted = data.lastVoteRound === currentVotingRound && data.lastVoteAt;
+      
+      voteStatusItems.push(`
+        <div class="vote-status-item">
+          <span>${player.customName || player.name} (${player.letter})</span>
+          <span class="vote-status-badge ${hasVoted ? 'voted' : 'pending'}">
+            ${hasVoted ? '✓ Votó' : '⏳ Pendiente'}
+          </span>
+        </div>
+      `);
+    } catch (e) {
+      console.debug("Error checking vote status for", player.uid, e);
+      voteStatusItems.push(`
+        <div class="vote-status-item">
+          <span>${player.customName || player.name} (${player.letter})</span>
+          <span class="vote-status-badge pending">⏳ Pendiente</span>
+        </div>
+      `);
+    }
+  }
+
+  voteStatusList.innerHTML = voteStatusItems.join('');
+}
+
 /* ------- Editor de nombre ------- */
 function openNameEditor(player) {
   const html = `<div class="modal">
@@ -342,10 +402,9 @@ function showVoteModal() {
   // Verificar si ya votó en ESTA ronda
   getDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid)).then(snap => {
     const data = snap.exists() ? snap.data() : {};
-    const currentRound = localState.room?.round || 0;
     
     // Si ya votó en esta ronda, no mostrar ventana
-    if (data.lastVoteRound === currentRound && data.lastVoteAt) {
+    if (data.lastVoteRound === currentVotingRound && data.lastVoteAt) {
       return;
     }
 
@@ -361,7 +420,7 @@ function showVoteModal() {
     let selectedPlayer = null;
     
     const html = `<div class="modal vote-modal">
-      <h3>Votación Activa - Ronda ${currentRound}</h3>
+      <h3>Votación Activa - Ronda ${currentVotingRound}</h3>
       <p class="small">Elige al rival más débil:</p>
       <div class="participant-list">
         ${alivePlayers.map(player => `
@@ -405,21 +464,24 @@ function showVoteModal() {
         await addDoc(collection(db, "rooms", ROOM_ID, "votes"), { 
           targetUid: selectedPlayer, 
           createdAt: serverTimestamp(),
-          round: localState.room?.round || 0
+          round: currentVotingRound,
+          voterUid: currentUser.uid
         });
         
         // Marcar como votado en documento privado (incluyendo la ronda actual)
-        const currentRound = localState.room?.round || 0;
         await updateDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid), { 
           lastVoteFor: selectedPlayer, 
           lastVoteAt: serverTimestamp(),
-          lastVoteRound: currentRound
+          lastVoteRound: currentVotingRound
         });
         
         const playerName = alivePlayers.find(p => p.uid === selectedPlayer)?.customName || 
                           alivePlayers.find(p => p.uid === selectedPlayer)?.name;
-        setStatus(`Has votado por ${playerName} en la ronda ${currentRound}`);
+        setStatus(`Has votado por ${playerName} en la ronda ${currentVotingRound}`);
         closeModal();
+        
+        // Actualizar panel de estado de votación
+        updateVoteStatusPanel();
         
         // Verificar si todos han votado
         setTimeout(checkAllVoted, 1000);
@@ -473,10 +535,14 @@ function subscribeRoom(){
     if (isNowVoting && !wasVoting) {
       // Acabamos de entrar en fase de votación
       console.log("Cambio a fase de votación detectado");
+      currentVotingRound = localState.room?.round || 0;
       
       // Iniciar verificación periódica de votos
       if (voteCheckInterval) clearInterval(voteCheckInterval);
       voteCheckInterval = setInterval(checkAllVoted, 3000);
+      
+      // Actualizar panel de estado de votación
+      updateVoteStatusPanel();
       
       // Mostrar ventana de votación después de un pequeño delay para asegurar que los datos estén cargados
       setTimeout(() => {
@@ -488,6 +554,7 @@ function subscribeRoom(){
         clearInterval(voteCheckInterval);
         voteCheckInterval = null;
       }
+      voteStatusPanel.classList.add("hidden");
     }
   }, err=>{
     console.error("room listen", err);
@@ -522,9 +589,23 @@ function subscribeVotes() {
   unsubVotes = onSnapshot(votesCol, async (snap) => {
     if (localState.room?.phase === 'voting') {
       await checkAllVoted();
+      updateVoteStatusPanel();
     }
   }, err => {
     console.error("votes listen", err);
+  });
+}
+
+/* ------- Private documents subscription ------- */
+function subscribePrivateDocs() {
+  if (unsubPrivate) unsubPrivate();
+  const privateCol = collection(db, "rooms", ROOM_ID, "private");
+  unsubPrivate = onSnapshot(privateCol, (snap) => {
+    if (localState.room?.phase === 'voting') {
+      updateVoteStatusPanel();
+    }
+  }, err => {
+    console.debug("private docs listen:", err?.code || err);
   });
 }
 
@@ -534,18 +615,22 @@ async function checkAllVoted() {
     const alivePlayers = localState.participants.filter(p => 
       p.alive !== false && !p.isModerator
     );
-    
-    const currentRound = localState.room?.round || 0;
+
+    if (alivePlayers.length === 0) {
+      return;
+    }
     
     // Contar votantes únicos consultando documentos privados (solo de esta ronda)
     const voters = new Set();
     const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
     privateDocs.forEach(docSnap => {
       const data = docSnap.data();
-      if (data.lastVoteAt && data.lastVoteRound === currentRound && data.role === 'player') {
+      if (data.lastVoteAt && data.lastVoteRound === currentVotingRound && data.role === 'player') {
         voters.add(docSnap.id);
       }
     });
+    
+    console.log(`Votación: ${voters.size}/${alivePlayers.length} han votado en ronda ${currentVotingRound}`);
     
     // Si todos los jugadores vivos han votado, procesar automáticamente
     if (voters.size >= alivePlayers.length) {
@@ -574,6 +659,9 @@ function handleEvent(ev, id){
     if (voteCheckInterval) clearInterval(voteCheckInterval);
     voteCheckInterval = setInterval(checkAllVoted, 3000);
     
+    // Actualizar panel de estado de votación
+    updateVoteStatusPanel();
+    
     // Mostrar ventana de votación cuando se recibe el evento de inicio de votación
     setTimeout(() => {
       showVoteModal();
@@ -592,6 +680,7 @@ function handleEvent(ev, id){
       clearInterval(voteCheckInterval);
       voteCheckInterval = null;
     }
+    voteStatusPanel.classList.add("hidden");
   } else if(ev.type === "votingEnded") {
     setStatus("Votación terminada. Resultados:");
     showNotification(`El rival más débil es: ${ev.weakestPlayerName}. Ha sido eliminado del juego.`);
@@ -613,6 +702,7 @@ function handleEvent(ev, id){
       clearInterval(voteCheckInterval);
       voteCheckInterval = null;
     }
+    voteStatusPanel.classList.add("hidden");
   } else if(ev.type === "groupLevelChanged") {
     updateGroupProgress();
   } else if(ev.type === "maxLevelChanged") {
@@ -649,6 +739,10 @@ function updateLocalUI(){
   if(me && me.isModerator) {
     moderatorControls.classList.remove("hidden");
     groupProgressControls.classList.remove("hidden");
+    // Mostrar panel de estado de votación si estamos en fase de votación
+    if (localState.room?.phase === 'voting') {
+      updateVoteStatusPanel();
+    }
   } else {
     moderatorControls.classList.add("hidden");
     groupProgressControls.classList.add("hidden");
@@ -814,17 +908,17 @@ startVoteBtn.addEventListener("click", async ()=>{
 /* ------- Finalizar votación automáticamente ------- */
 async function endVotingAndEliminateWeakest() {
   try {
-    const currentRound = localState.room?.round || 0;
-    
     // Obtener solo los votos de la ronda actual
     const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
     const votes = [];
     votesSnap.forEach(doc => {
       const voteData = doc.data();
-      if (voteData.round === currentRound) {
+      if (voteData.round === currentVotingRound) {
         votes.push(voteData);
       }
     });
+    
+    console.log(`Procesando ${votes.length} votos para la ronda ${currentVotingRound}`);
     
     const voteCount = {};
     votes.forEach(vote => {
@@ -852,7 +946,7 @@ async function endVotingAndEliminateWeakest() {
         weakestPlayerUid, 
         weakestPlayerName,
         voteCount: maxVotes,
-        round: currentRound,
+        round: currentVotingRound,
         createdBy: currentUser.uid, 
         createdAt: serverTimestamp()
       });
@@ -860,7 +954,7 @@ async function endVotingAndEliminateWeakest() {
       const roomRef = doc(db,"rooms",ROOM_ID);
       await updateDoc(roomRef, { phase: "playing" });
       
-      setStatus(`Votación finalizada - Ronda ${currentRound}. ${weakestPlayerName} ha sido eliminado.`);
+      setStatus(`Votación finalizada - Ronda ${currentVotingRound}. ${weakestPlayerName} ha sido eliminado.`);
     } else {
       setStatus("No se pudo determinar el rival más débil.");
     }
@@ -869,10 +963,11 @@ async function endVotingAndEliminateWeakest() {
     try {
       for(const v of votesSnap.docs) {
         const voteData = v.data();
-        if (voteData.round === currentRound) {
+        if (voteData.round === currentVotingRound) {
           await deleteDoc(v.ref);
         }
       }
+      console.log(`Votos de la ronda ${currentVotingRound} eliminados`);
     } catch(e){ console.debug("no se pudieron borrar votes", e); }
     
     if (voteCheckInterval) {
@@ -959,6 +1054,7 @@ onAuthStateChanged(auth, async (user)=>{
       subscribeRoom();
       subscribeEvents();
       subscribeVotes();
+      subscribePrivateDocs();
 
       const privateRef = doc(db,"rooms",ROOM_ID,"private", user.uid);
       onSnapshot(privateRef, snap=>{
