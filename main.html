@@ -70,6 +70,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 .vote-status-badge{padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .vote-status-badge.voted{background:rgba(34,197,94,0.2);color:#4ade80}
 .vote-status-badge.pending{background:rgba(251,191,36,0.2);color:#fbbf24}
+.vote-checkmark{color:#4ade80;font-size:16px;margin-left:8px;}
 </style>
 </head>
 <body>
@@ -109,7 +110,7 @@ ul.participants li{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.
 
       <!-- Panel de estado de votación (solo para moderador) -->
       <div id="voteStatusPanel" class="vote-status-panel hidden">
-        <h4>Estado de Votación</h4>
+        <h4>Estado de Votación - Ronda <span id="currentRoundDisplay">0</span></h4>
         <div id="voteStatusList"></div>
       </div>
 
@@ -166,7 +167,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
   getFirestore, doc, setDoc, getDoc, onSnapshot, collection,
-  updateDoc, deleteDoc, serverTimestamp, getDocs, addDoc, query, orderBy
+  updateDoc, deleteDoc, serverTimestamp, getDocs, addDoc, query, orderBy,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
 /* ------- CONFIG ------- */
@@ -208,6 +210,7 @@ const maxLevelInput = document.getElementById("maxLevelInput");
 const setMaxLevelBtn = document.getElementById("setMaxLevelBtn");
 const voteStatusPanel = document.getElementById("voteStatusPanel");
 const voteStatusList = document.getElementById("voteStatusList");
+const currentRoundDisplay = document.getElementById("currentRoundDisplay");
 
 let currentUser = null;
 let unsubParts = null, unsubRoom = null, unsubEvents = null, unsubVotes = null, unsubPrivate = null;
@@ -307,6 +310,9 @@ async function updateVoteStatusPanel() {
 
   voteStatusPanel.classList.remove("hidden");
   
+  // Actualizar display de ronda actual
+  currentRoundDisplay.textContent = currentVotingRound;
+  
   const alivePlayers = localState.participants.filter(p => 
     p.alive !== false && !p.isModerator
   );
@@ -322,9 +328,12 @@ async function updateVoteStatusPanel() {
       
       voteStatusItems.push(`
         <div class="vote-status-item">
-          <span>${player.customName || player.name} (${player.letter})</span>
+          <div style="display:flex;align-items:center;">
+            <span>${player.customName || player.name} (${player.letter})</span>
+            ${hasVoted ? '<span class="vote-checkmark">✅</span>' : ''}
+          </div>
           <span class="vote-status-badge ${hasVoted ? 'voted' : 'pending'}">
-            ${hasVoted ? '✓ Votó' : '⏳ Pendiente'}
+            ${hasVoted ? 'Votó' : 'Pendiente'}
           </span>
         </div>
       `);
@@ -332,14 +341,41 @@ async function updateVoteStatusPanel() {
       console.debug("Error checking vote status for", player.uid, e);
       voteStatusItems.push(`
         <div class="vote-status-item">
-          <span>${player.customName || player.name} (${player.letter})</span>
-          <span class="vote-status-badge pending">⏳ Pendiente</span>
+          <div style="display:flex;align-items:center;">
+            <span>${player.customName || player.name} (${player.letter})</span>
+          </div>
+          <span class="vote-status-badge pending">Pendiente</span>
         </div>
       `);
     }
   }
 
   voteStatusList.innerHTML = voteStatusItems.join('');
+}
+
+/* ------- Resetear votos de todos los jugadores ------- */
+async function resetAllVotes() {
+  try {
+    const batch = writeBatch(db);
+    const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
+    
+    privateDocs.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.role === 'player') {
+        // Resetear solo los campos de voto, mantener el resto de la información
+        batch.update(docSnap.ref, {
+          lastVoteFor: null,
+          lastVoteAt: null,
+          lastVoteRound: -1
+        });
+      }
+    });
+    
+    await batch.commit();
+    console.log("Votos reseteados para todos los jugadores");
+  } catch (e) {
+    console.error("Error reseteando votos:", e);
+  }
 }
 
 /* ------- Editor de nombre ------- */
@@ -460,15 +496,7 @@ function showVoteModal() {
       if (!selectedPlayer) return;
       
       try {
-        // Registrar voto
-        await addDoc(collection(db, "rooms", ROOM_ID, "votes"), { 
-          targetUid: selectedPlayer, 
-          createdAt: serverTimestamp(),
-          round: currentVotingRound,
-          voterUid: currentUser.uid
-        });
-        
-        // Marcar como votado en documento privado (incluyendo la ronda actual)
+        // Registrar voto en memoria de Firebase
         await updateDoc(doc(db, "rooms", ROOM_ID, "private", currentUser.uid), { 
           lastVoteFor: selectedPlayer, 
           lastVoteAt: serverTimestamp(),
@@ -549,7 +577,10 @@ function subscribeRoom(){
         showVoteModal();
       }, 500);
     } else if (!isNowVoting && wasVoting) {
-      // Salimos de la fase de votación
+      // Salimos de la fase de votación - RESETEAR VOTOS
+      console.log("Saliendo de fase de votación - Reseteando votos");
+      resetAllVotes();
+      
       if (voteCheckInterval) {
         clearInterval(voteCheckInterval);
         voteCheckInterval = null;
@@ -670,11 +701,9 @@ function handleEvent(ev, id){
     setStatus("Evento: Juego cerrado por moderador.");
     impostorNotice.classList.add("hidden");
     eliminatedNotice.classList.add("hidden");
-    localState.room = localState.room || {};
-    localState.room.phase = "lobby";
-    localState.room.round = 0;
-    localState.room.groupLevel = 0;
-    updateGroupProgress();
+    
+    // Resetear contador de ronda a 0
+    currentVotingRound = 0;
     
     if (voteCheckInterval) {
       clearInterval(voteCheckInterval);
@@ -790,7 +819,12 @@ joinBtn.addEventListener("click", async ()=>{
       for(const l of LETTERS) if(!usedLetters.includes(l)){ letter = l; break; }
       if(!letter){ setStatus("Lobby de jugadores lleno (A–J).", true); return; }
       await setDoc(partRef, { uid: currentUser.uid, name: `Jugador ${letter}`, letter, isModerator: false, alive: true, joinedAt: serverTimestamp(), level: 0 });
-      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { role: "player", lastVoteFor: null, lastVoteAt: null, lastVoteRound: -1 });
+      await setDoc(doc(db,"rooms",ROOM_ID,"private",currentUser.uid), { 
+        role: "player", 
+        lastVoteFor: null, 
+        lastVoteAt: null, 
+        lastVoteRound: -1 
+      });
       setStatus(`Ingresado como Jugador ${letter}.`);
     }
   }catch(e){ console.error(e); setStatus("Error al unirse: "+(e?.message || e), true); }
@@ -908,13 +942,17 @@ startVoteBtn.addEventListener("click", async ()=>{
 /* ------- Finalizar votación automáticamente ------- */
 async function endVotingAndEliminateWeakest() {
   try {
-    // Obtener solo los votos de la ronda actual
-    const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
+    // Obtener los votos de la memoria de Firebase (documentos privados)
+    const privateDocs = await getDocs(collection(db, "rooms", ROOM_ID, "private"));
     const votes = [];
-    votesSnap.forEach(doc => {
-      const voteData = doc.data();
-      if (voteData.round === currentVotingRound) {
-        votes.push(voteData);
+    
+    privateDocs.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.lastVoteRound === currentVotingRound && data.lastVoteFor && data.role === 'player') {
+        votes.push({
+          targetUid: data.lastVoteFor,
+          voterUid: docSnap.id
+        });
       }
     });
     
@@ -959,16 +997,7 @@ async function endVotingAndEliminateWeakest() {
       setStatus("No se pudo determinar el rival más débil.");
     }
     
-    // Limpiar solo los votos de esta ronda
-    try {
-      for(const v of votesSnap.docs) {
-        const voteData = v.data();
-        if (voteData.round === currentVotingRound) {
-          await deleteDoc(v.ref);
-        }
-      }
-      console.log(`Votos de la ronda ${currentVotingRound} eliminados`);
-    } catch(e){ console.debug("no se pudieron borrar votes", e); }
+    // Los votos se resetearán automáticamente cuando salgamos de la fase de votación
     
     if (voteCheckInterval) {
       clearInterval(voteCheckInterval);
@@ -988,6 +1017,19 @@ closeGameBtn.addEventListener("click", async ()=>{
     const me = localState.participants.find(p=>p.uid === currentUser?.uid);
     if(!me || !me.isModerator){ alert("Solo el moderador puede cerrar el juego."); return; }
 
+    // Resetear contador de ronda a 0 en la sala
+    const roomRef = doc(db,"rooms",ROOM_ID);
+    await updateDoc(roomRef, { 
+      phase: "lobby", 
+      round: 0,  // RESETEAR CONTADOR DE RONDA
+      rivalUid: null, 
+      votingStartedAt: null, 
+      groupLevel: 0 
+    });
+
+    // Resetear votos de todos los jugadores
+    await resetAllVotes();
+
     // Eliminar todos los participantes
     const participantsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"participants"));
     for (const docSnap of participantsSnap.docs) {
@@ -1000,33 +1042,17 @@ closeGameBtn.addEventListener("click", async ()=>{
       await deleteDoc(doc(db,"rooms",ROOM_ID,"private",docSnap.id));
     }
 
-    // Eliminar todos los votos
-    const votesSnap = await getDocs(collection(db,"rooms",ROOM_ID,"votes"));
-    for (const docSnap of votesSnap.docs) {
-      await deleteDoc(docSnap.ref);
-    }
-
     // Eliminar todos los eventos
     const eventsSnap = await getDocs(collection(db,"rooms",ROOM_ID,"events"));
     for (const docSnap of eventsSnap.docs) {
       await deleteDoc(docSnap.ref);
     }
 
-    // Resetear la sala
-    const roomRef = doc(db,"rooms",ROOM_ID);
-    await updateDoc(roomRef, { 
-      phase: "lobby", 
-      round: 0, 
-      rivalUid: null, 
-      votingStartedAt: null, 
-      groupLevel: 0 
-    });
-
     await addDoc(collection(db,"rooms",ROOM_ID,"events"), {
       type: "gameClosed", createdBy: currentUser.uid, createdAt: serverTimestamp()
     });
 
-    setStatus("Juego cerrado. Todos los datos han sido eliminados.");
+    setStatus("Juego cerrado. Todos los datos han sido eliminados y el contador de ronda reseteado.");
 
     if (voteCheckInterval) {
       clearInterval(voteCheckInterval);
